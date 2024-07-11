@@ -1,3 +1,15 @@
+![Quick Cat](quickcat.png)
+
+```txt
+________        .__        __     _________         __   
+\_____  \  __ __|__| ____ |  | __ \_   ___ \_____ _/  |_ 
+ /  / \  \|  |  \  |/ ___\|  |/ / /    \  \/\__  \\   __\
+/   \_/.  \  |  /  \  \___|    <  \     \____/ __ \|  |  
+\_____\ \_/____/|__|\___  >__|_ \  \______  (____  /__|  
+       \__>             \/     \/         \/     \/
+```
+
+
 # quick-cat
 Script for concatenating files and prompting an LLM to quickly bring it up to speed on a project.
 

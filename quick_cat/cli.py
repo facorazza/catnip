@@ -65,8 +65,8 @@ def get_files_recursively(paths, exclude_patterns=None):
         "*/venv/*",
         "*/.env/*",
         "*/__pycache__/*",
-        "*/.pytest_cache/*",
         "*/.mypy_cache/*",
+        "*/.pytest_cache/*",
         "*/build/*",
         "*/dist/*",
         "*/egg-info/*",
@@ -81,7 +81,10 @@ def get_files_recursively(paths, exclude_patterns=None):
         path_obj = Path(path)
 
         if path_obj.is_file():
-            if not any(fnmatch.fnmatch(str(path_obj), pattern) for pattern in exclude_patterns):
+            # Check for empty files and exclusion patterns
+            if path_obj.stat().st_size > 0 and not any(
+                fnmatch.fnmatch(str(path_obj), pattern) for pattern in exclude_patterns
+            ):
                 found_files.append(path_obj)
         elif path_obj.is_dir():
             for root, dirs, files in os.walk(path_obj):
@@ -96,7 +99,8 @@ def get_files_recursively(paths, exclude_patterns=None):
 
                 for file in files:
                     file_path = root_path / file
-                    if not any(
+                    # Check for empty files and exclusion patterns
+                    if file_path.stat().st_size > 0 and not any(
                         fnmatch.fnmatch(str(file_path), pattern) for pattern in exclude_patterns
                     ):
                         found_files.append(file_path)

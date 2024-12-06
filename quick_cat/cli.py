@@ -203,7 +203,7 @@ def get_file_type(file):
     return file_types.get(ext, "")
 
 
-def concatenate_files(files, output_file):
+def concatenate_files(files, output_file=None):
     """
     Concatenates the content of multiple files, adds directory structure and file type annotations.
 
@@ -211,44 +211,49 @@ def concatenate_files(files, output_file):
         files (list of Path): List of file paths to concatenate.
         output_file (str): The name of the output file.
     """
-    try:
-        with open(output_file, "w") as out_file:
-            # Write the directory structure
-            out_file.write("# Project Structure\n\n")
-            out_file.write("├── ./\n")
-            directory_structure = generate_directory_structure(files)
-            for line in directory_structure:
-                out_file.write(line + "\n")
-            out_file.write("\n# File Contents\n\n")
+    output = []
 
-            # Concatenate the contents of each file
-            for file in sorted(files):
-                try:
-                    relative_path = file.relative_to(Path(".").resolve())
-                except ValueError:
-                    relative_path = file
+    output.append("# Project Structure\n\n")
+    output.append("├── ./\n")
+    directory_structure = generate_directory_structure(files)
+    output.extend(line + "\n" for line in directory_structure)
+    output.append("\n# File Contents\n\n")
 
-                file_type = get_file_type(file)
+    for file in sorted(files):
+        try:
+            relative_path = file.relative_to(Path(".").resolve())
+        except ValueError:
+            relative_path = file
 
-                out_file.write(f"## {relative_path}\n\n")
-                out_file.write(f"```{file_type}\n")
+        file_type = get_file_type(file)
 
-                try:
-                    with open(file, "r") as f:
-                        # Read the content and strip trailing newlines
-                        content = f.read().rstrip("\n")
-                        out_file.write(content)
-                except Exception as e:
-                    logging.error(f"Error reading file {file}: {e}")
+        output.append(f"## {relative_path}\n\n")
+        output.append(f"```{file_type}\n")
 
-                out_file.write("\n```\n\n")
+        try:
+            with open(file, "r") as f:
+                # Read the content and strip trailing newlines
+                content = f.read().rstrip("\n")
+                output.append(content)
+        except Exception as e:
+            logging.error(f"Error reading file {file}: {e}")
 
-        logging.info(f"Successfully created output file: {output_file}")
-    except Exception as e:
-        logging.error(f"Error concatenating files: {e}")
+        output.append("\n```\n\n")
+
+    result = "".join(output)
+
+    if output_file:
+        try:
+            with open(output_file, "w") as out_file:
+                out_file.write(result)
+            logging.info(f"Successfully created output file: {output_file}")
+        except Exception as e:
+            logging.error(f"Error writing output file: {e}")
+
+    return result
 
 
-def copy_to_clipboard(output_file):
+def copy_to_clipboard(content):
     """
     Copies the contents of the output file to the clipboard.
 
@@ -256,21 +261,18 @@ def copy_to_clipboard(output_file):
         output_file (str): The name of the output file.
     """
     try:
-        with open(output_file, "r") as f:
-            output_content = f.read()
-
         system = platform.system()
         if system == "Linux":
             # Check for Wayland or X11
             if is_wayland():
                 try:
-                    subprocess.run(["wl-copy"], input=output_content.encode("utf-8"), check=True)
+                    subprocess.run(["wl-copy"], input=content.encode("utf-8"), check=True)
                     click.echo("Copied using wl-copy (Wayland)")
                 except FileNotFoundError:
                     try:
                         subprocess.run(
                             ["xclip", "-selection", "clipboard"],
-                            input=output_content.encode("utf-8"),
+                            input=content.encode("utf-8"),
                             check=True,
                         )
                         click.echo("Copied using xclip (X11)")
@@ -280,17 +282,17 @@ def copy_to_clipboard(output_file):
                 try:
                     subprocess.run(
                         ["xclip", "-selection", "clipboard"],
-                        input=output_content.encode("utf-8"),
+                        input=content.encode("utf-8"),
                         check=True,
                     )
                     click.echo("Copied using xclip (X11)")
                 except FileNotFoundError:
                     click.echo("xclip not found. Unable to copy to clipboard.")
-        elif system == "Darwin":  # macOS
-            subprocess.run(["pbcopy"], input=output_content.encode("utf-8"), check=True)
+        elif system == "Darwin":
+            subprocess.run(["pbcopy"], input=content.encode("utf-8"), check=True)
             click.echo("Copied using pbcopy (macOS)")
         elif system == "Windows":
-            subprocess.run(["clip"], input=output_content.encode("utf-8"), check=True)
+            subprocess.run(["clip"], input=content.encode("utf-8"), check=True)
             click.echo("Copied using clip (Windows)")
         else:
             click.echo(f"Clipboard copy not supported on {system}.")
@@ -301,32 +303,24 @@ def copy_to_clipboard(output_file):
 
 @click.command(help="Concatenate files with directory structure and content.")
 @click.argument("paths", nargs=-1, type=click.Path(exists=True))
-@click.option("-o", "--output", default="output.md", help="Output file name (default: output.md)")
+@click.option("-o", "--output", default=None, help="Output file name (optional)")
 @click.option(
     "--copy/--no-copy",
     default=False,
-    help="Copy the output file contents to the clipboard",
+    help="Copy the output to the clipboard",
 )
 @click.option("--exclude", multiple=True, help="Additional patterns to exclude from file search")
 def main(paths, output, copy, exclude):
     """Main function to execute file concatenation."""
 
-    # Find files with exclusion
-    try:
-        files = get_files_recursively(paths, list(exclude))
+    files = get_files_recursively(paths, list(exclude))
 
-        # Concatenate files
-        concatenate_files(files, output)
+    result = concatenate_files(files, output)
 
-        # Copy to clipboard if requested
-        if copy:
-            copy_to_clipboard(output)
-        elif click.confirm("Do you want to copy the contents to the clipboard?"):
-            copy_to_clipboard(output)
-
-    except Exception as e:
-        logging.error(f"An error occurred: {e}")
-        click.echo(f"Error: {e}")
+    if copy:
+        copy_to_clipboard(result)
+    elif not output and click.confirm("Do you want to copy the contents to the clipboard?"):
+        copy_to_clipboard(result)
 
 
 if __name__ == "__main__":

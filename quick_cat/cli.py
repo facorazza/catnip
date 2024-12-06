@@ -57,19 +57,19 @@ def get_files_recursively(paths, exclude_patterns=None):
         "__init__.py",
         "LICENSE",
         # Common directories to exclude
-        "*/.git/*",
-        "*/.github/*",
-        "*/.vscode/*",
-        "*/.idea/*",
-        "*/node_modules/*",
-        "*/venv/*",
-        "*/.env/*",
-        "*/__pycache__/*",
-        "*/.mypy_cache/*",
-        "*/.pytest_cache/*",
-        "*/build/*",
-        "*/dist/*",
-        "*/egg-info/*",
+        "*/.git*",
+        "*/.vscode*",
+        "*/.idea*",
+        "*/node_modules*",
+        "*/venv*",
+        "*/.env*",
+        "*/__pycache__*",
+        "*/.mypy_cache*",
+        "*/.pytest_cache*",
+        "*/.github*",
+        "*/build*",
+        "*/dist*",
+        "*/egg-info*",
     ]
 
     # Combine default exclusions with user-provided exclusions
@@ -94,7 +94,11 @@ def get_files_recursively(paths, exclude_patterns=None):
                 dirs[:] = [
                     d
                     for d in dirs
-                    if not any(fnmatch.fnmatch(str(root_path / d), p) for p in exclude_patterns)
+                    if not any(
+                        fnmatch.fnmatch(str(root_path / d), pattern)
+                        or fnmatch.fnmatch(d, pattern.split("/")[-1])
+                        for pattern in exclude_patterns
+                    )
                 ]
 
                 for file in files:

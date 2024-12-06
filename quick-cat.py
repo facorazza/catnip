@@ -1,5 +1,3 @@
-# quick-cat.py
-
 import os
 import logging
 import platform
@@ -10,41 +8,55 @@ from pathlib import Path
 import click
 
 
-def setup_logging(script_name):
-    """Setup logging configuration to output logs to a file and console."""
-    log_dir = "./logs"
-    os.makedirs(log_dir, exist_ok=True)
-    log_file = os.path.join(log_dir, f"{script_name}.log")
-
-    logging.basicConfig(
-        level=logging.DEBUG,
-        format="%(asctime)s - %(levelname)s - %(message)s",
-        handlers=[logging.FileHandler(log_file), logging.StreamHandler()],
-    )
+logging.basicConfig(
+    level=logging.DEBUG,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    handlers=[logging.StreamHandler()],
+)
 
 
 def is_wayland():
-    """
-    Check if the current display server is Wayland.
-
-    Returns:
-        bool: True if running on Wayland, False otherwise.
-    """
+    """Check if the current display server is Wayland."""
     return os.environ.get("WAYLAND_DISPLAY") is not None
 
 
 def get_files_recursively(paths, exclude_patterns=None):
     """
     Recursively find files in given paths, with optional exclusion.
-
-    Parameters:
-        paths (list): List of file or directory paths to search.
-        exclude_patterns (list, optional): List of patterns to exclude.
-
-    Returns:
-        list: List of file paths.
     """
-    exclude_patterns = exclude_patterns or []
+    # Predefined exclusion patterns for non-text and system directories
+    default_exclude = [
+        "*/__pycache__*",
+        "*.pyc",
+        "*.pyo",
+        "*.pyd",
+        ".git*",
+        ".svn*",
+        ".hg*",
+        ".DS_Store",
+        "*.jpg",
+        "*.jpeg",
+        "*.png",
+        "*.gif",
+        "*.bmp",
+        "*.svg",
+        "*.webp",
+        "*.ico",
+        "*.wav",
+        "*.mp3",
+        "*.mp4",
+        "*.mov",
+        "*.avi",
+        "*.zip",
+        "*.tar",
+        "*.gz",
+        "*.rar",
+        "*.7z",
+    ]
+
+    # Combine default exclusions with user-provided exclusions
+    exclude_patterns = list(set(default_exclude + (exclude_patterns or [])))
+
     found_files = []
 
     for path in paths:
@@ -61,6 +73,13 @@ def get_files_recursively(paths, exclude_patterns=None):
         # If it's a directory, walk recursively
         if path_obj.is_dir():
             for root, _, files in os.walk(path_obj):
+                # Skip excluded directories
+                if any(
+                    fnmatch.fnmatch(os.path.basename(root), pattern)
+                    for pattern in exclude_patterns
+                ):
+                    continue
+
                 for file in files:
                     full_path = Path(root) / file
                     # Check against exclusion patterns
@@ -74,28 +93,47 @@ def get_files_recursively(paths, exclude_patterns=None):
 
 def generate_directory_structure(files):
     """
-    Generates a text representation of the directory structure for the given files.
-
-    Parameters:
-        files (list of Path): List of file paths.
-
-    Returns:
-        list of str: Directory structure lines.
+    Generates a compact text representation of the directory structure for the given files.
     """
     structure = []
     root = Path(".").resolve()
+
+    # Group files by their directory
+    file_dict = {}
     for file in sorted(files):
-        path = file.resolve()
         try:
-            relative_path = path.relative_to(root)
+            relative_path = file.relative_to(root)
         except ValueError:
-            relative_path = path  # If the path is not relative, use the absolute path
+            relative_path = file  # If the path is not relative, use the absolute path
+
         parts = list(relative_path.parts)
-        for i in range(len(parts)):
-            part = parts[: i + 1]
-            line = "│   " * (len(part) - 1) + "├── " + part[-1]
-            if line not in structure:
-                structure.append(line)
+
+        # Build the directory hierarchy
+        current = file_dict
+        for part in parts[:-1]:
+            current = current.setdefault(part, {})
+        current[parts[-1]] = None
+
+    def build_tree(tree, prefix=""):
+        """Recursively build the directory tree."""
+        items = list(tree.items())
+        for i, (name, subtree) in enumerate(items):
+            is_last = i == len(items) - 1
+
+            # Choose the right tree connector
+            connector = "└── " if is_last else "├── "
+
+            # Add the current item
+            structure.append(f"{prefix}{connector}{name}")
+
+            # Recursively build subtree
+            if subtree is not None:
+                new_prefix = prefix + ("    " if is_last else "│   ")
+                build_tree(subtree, new_prefix)
+
+    # Start building the tree
+    build_tree(file_dict)
+
     return structure
 
 
@@ -245,6 +283,7 @@ def copy_to_clipboard(output_file):
     except Exception as e:
         logging.error(f"Error copying contents to clipboard: {e}")
 
+
 @click.command(help="Concatenate files with directory structure and content.")
 @click.argument("paths", nargs=-1, type=click.Path(exists=True))
 @click.option(
@@ -256,22 +295,10 @@ def copy_to_clipboard(output_file):
     help="Copy the output file contents to the clipboard",
 )
 @click.option(
-    "--exclude",
-    multiple=True,
-    help="Patterns to exclude from file search (e.g., *.pyc .git)",
+    "--exclude", multiple=True, help="Additional patterns to exclude from file search"
 )
 def main(paths, output, copy, exclude):
-    """
-    Main function to execute file concatenation.
-
-    Args:
-        paths (tuple): Paths to files or directories to concatenate
-        output (str): Output file name
-        copy (bool): Whether to copy to clipboard
-        exclude (tuple): Patterns to exclude
-    """
-    # Setup logging
-    setup_logging("concatenate_files")
+    """Main function to execute file concatenation."""
 
     # Find files with exclusion
     try:

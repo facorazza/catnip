@@ -5,7 +5,7 @@ description = "A script for concatenating files and preparing project summaries 
 authors = ["Federico A. Corazza <git@facorazza.com>"]
 readme = "README.md"
 license = "Apache-2.0"
-packages = [{include = "quick_cat"}]
+packages = [{include = "quick-cat"}]
 
 [tool.poetry.dependencies]
 python = "^3.9"
@@ -19,7 +19,7 @@ pytest = "^8.0.0"
 pytest-cov = "^4.0.0"
 
 [tool.poetry.scripts]
-quick-cat = "quick_cat.cli:main"
+quick-cat = "quick-cat.cli:main"
 
 [build-system]
 requires = ["poetry-core"]

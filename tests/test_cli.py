@@ -1,6 +1,6 @@
 import pytest
 from pathlib import Path
-from unittest.mock import patch, mock_open, MagicMock
+from unittest.mock import patch, mock_open
 from quick_cat.cli import (
     is_wayland,
     get_files_recursively,

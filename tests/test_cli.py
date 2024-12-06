@@ -35,11 +35,7 @@ def test_get_files_recursively(tmp_path):
 
 
 def test_generate_directory_structure():
-    files = [
-        Path("dir1/file1.txt"),
-        Path("dir1/subdir/file2.py"),
-        Path("dir2/file3.js")
-    ]
+    files = [Path("dir1/file1.txt"), Path("dir1/subdir/file2.py"), Path("dir2/file3.js")]
 
     structure = generate_directory_structure(files)
     assert len(structure) == 6

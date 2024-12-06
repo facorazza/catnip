@@ -12,10 +12,11 @@ python = "^3.9"
 click = "^8.0.0"
 
 [tool.poetry.group.dev.dependencies]
-pytest = "^8.0.0"
 black = "^24.0.0"
 ruff = "^0.8.0"
 mypy = "^1.0.0"
+pytest = "^8.0.0"
+pytest-cov = "^4.0.0"
 
 [tool.poetry.scripts]
 quick-cat = "quick_cat.cli:main"
@@ -31,7 +32,3 @@ target-version = ['py39']
 [tool.mypy]
 ignore_missing_imports = true
 check_untyped_defs = true
-
-[tool.flake8]
-max-line-length = 100
-extend-ignore = "E203"

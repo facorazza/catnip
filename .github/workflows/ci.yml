@@ -28,25 +28,30 @@ jobs:
       uses: actions/setup-python@v4
       with:
         python-version: ${{ matrix.python-version }}
+        cache: "pip"
 
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install poetry
-        poetry install
+        poetry config virtualenvs.create false
+        poetry install --no-root --no-dev
 
-    - name: Check for outdated packages
+    - name: Run tests with coverage
       run: |
-        poetry show --outdated
+        poetry run pytest tests/ --cov=quick_cat --cov-report=xml
 
-    - name: Run tests
-      run: |
-        poetry run pytest tests/
+    - name: Upload coverage
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
+        flags: unittests
+        fail_ci_if_error: true
 
     - name: Run linters
       run: |
         poetry run black --check .
-        poetry run flake8 .
+        poetry run ruff check .
         poetry run mypy .
 
   build-and-publish:
@@ -119,3 +124,4 @@ jobs:
       uses: actions/dependency-review-action@v3
       with:
         fail-on-severity: critical
+

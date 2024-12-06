@@ -48,7 +48,7 @@ jobs:
   build-and-publish:
     needs: test
     runs-on: ubuntu-latest
-    if: github.event_name == "release" && github.event.action == "created"
+    if: github.event_name == 'release' && github.event.action == 'created'
 
     steps:
     - uses: actions/checkout@v4

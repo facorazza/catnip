@@ -28,7 +28,6 @@ def get_files_recursively(paths, exclude_patterns=None):
     """
     # Predefined exclusion patterns for non-text and system directories
     default_exclude = [
-        "*/__pycache__*",
         "*.pyc",
         "*.pyo",
         "*.pyd",
@@ -54,6 +53,7 @@ def get_files_recursively(paths, exclude_patterns=None):
         "*.gz",
         "*.rar",
         "*.7z",
+        "*.lock",
         "__init__.py",
         "LICENSE",
         # Common directories to exclude

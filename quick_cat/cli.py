@@ -5,6 +5,7 @@ import logging
 import platform
 import subprocess
 import fnmatch
+import re
 from pathlib import Path
 
 import click
@@ -21,8 +22,9 @@ def is_wayland():
     """Check if the current display server is Wayland."""
     return os.environ.get("WAYLAND_DISPLAY") is not None
 
-
-def get_files_recursively(paths, exclude_patterns=None):
+def get_files_recursively(
+    paths, exclude_patterns=None, ignore_comments=False, ignore_docstrings=False
+):
     """
     Recursively find files in given paths, with optional exclusion.
     """
@@ -54,7 +56,6 @@ def get_files_recursively(paths, exclude_patterns=None):
         "*.rar",
         "*.7z",
         "*.lock",
-        "__init__.py",
         "LICENSE",
         # Common directories to exclude
         "*/.git*",
@@ -66,7 +67,6 @@ def get_files_recursively(paths, exclude_patterns=None):
         "*/__pycache__*",
         "*/.mypy_cache*",
         "*/.pytest_cache*",
-        "*/.github*",
         "*/build*",
         "*/dist*",
         "*/egg-info*",
@@ -82,9 +82,7 @@ def get_files_recursively(paths, exclude_patterns=None):
 
         if path_obj.is_file():
             # Check for empty files and exclusion patterns
-            if path_obj.stat().st_size > 0 and not any(
-                fnmatch.fnmatch(str(path_obj), pattern) for pattern in exclude_patterns
-            ):
+            if _is_valid_file(path_obj, exclude_patterns, ignore_comments, ignore_docstrings):
                 found_files.append(path_obj)
         elif path_obj.is_dir():
             for root, dirs, files in os.walk(path_obj):
@@ -104,12 +102,63 @@ def get_files_recursively(paths, exclude_patterns=None):
                 for file in files:
                     file_path = root_path / file
                     # Check for empty files and exclusion patterns
-                    if file_path.stat().st_size > 0 and not any(
-                        fnmatch.fnmatch(str(file_path), pattern) for pattern in exclude_patterns
+                    if _is_valid_file(
+                        file_path, exclude_patterns, ignore_comments, ignore_docstrings
                     ):
                         found_files.append(file_path)
 
     return found_files
+
+
+def _is_valid_file(file_path, exclude_patterns, ignore_comments, ignore_docstrings):
+    if file_path.stat().st_size == 0:
+        return False
+
+    # Check exclusion patterns with improved pattern matching
+    if any(_advanced_pattern_match(str(file_path), pattern) for pattern in exclude_patterns):
+        return False
+
+    if ignore_comments or ignore_docstrings:
+        try:
+            with open(file_path, "r") as f:
+                content = f.read()
+                if ignore_comments:
+                    content = _remove_comments(file_path, content)
+                if ignore_docstrings:
+                    content = _remove_docstrings(content)
+
+                # If content becomes empty after removing comments/docstrings
+                if not content.strip():
+                    return False
+        except Exception as e:
+            logging.error(f"Error processing file {file_path}: {e}")
+            return False
+
+    return True
+
+
+def _advanced_pattern_match(path, pattern):
+    # Enhanced pattern matching with more robust wildcard handling
+    regex_pattern = pattern.replace(".", r"\.").replace("*", ".*")
+    return re.match(regex_pattern, path) is not None
+
+
+def _remove_comments(file_path, content):
+    ext = file_path.suffix.lower()
+    if ext in [".py", ".pyw"]:
+        return re.sub(
+            r'(#.*?$)|(\'\'\'.*?\'\'\'|""".*?""")', "", content, flags=re.MULTILINE | re.DOTALL
+        )
+    elif ext in [".js", ".java", ".c", ".cpp", ".cs", ".swift"]:
+        return re.sub(r"(//.*?$)|(\/\*.*?\*\/)", "", content, flags=re.MULTILINE | re.DOTALL)
+    elif ext in [".html", ".xml"]:
+        return re.sub(r"<!--.*?-->", "", content, flags=re.DOTALL)
+    return content
+
+
+def _remove_docstrings(content):
+    # Remove Python docstrings
+    return re.sub(r'(\'\'\'.*?\'\'\'|""".*?""")', "", content, flags=re.MULTILINE | re.DOTALL)
 
 
 def generate_directory_structure(files):
@@ -308,16 +357,15 @@ def copy_to_clipboard(content):
 @click.command(help="Concatenate files with directory structure and content.")
 @click.argument("paths", nargs=-1, type=click.Path(exists=True))
 @click.option("-o", "--output", default=None, help="Output file name (optional)")
-@click.option(
-    "--copy/--no-copy",
-    default=False,
-    help="Copy the output to the clipboard",
-)
+@click.option("--copy/--no-copy", default=False, help="Copy the output to the clipboard")
 @click.option("--exclude", multiple=True, help="Additional patterns to exclude from file search")
-def main(paths, output, copy, exclude):
+@click.option("--ignore-comments", is_flag=True, default=False, help="Ignore code comments")
+@click.option("--ignore-docstrings", is_flag=True, default=False, help="Ignore docstrings")
+def main(paths, output, copy, exclude, ignore_comments, ignore_docstrings):
     """Main function to execute file concatenation."""
-
-    files = get_files_recursively(paths, list(exclude))
+    files = get_files_recursively(
+        paths, list(exclude), ignore_comments=ignore_comments, ignore_docstrings=ignore_docstrings
+    )
 
     result = concatenate_files(files, output)
 

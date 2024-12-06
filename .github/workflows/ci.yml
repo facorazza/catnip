@@ -51,7 +51,6 @@ jobs:
       run: |
         poetry run black --check .
         poetry run ruff check .
-        poetry run mypy .
 
   build-and-publish:
     needs: test

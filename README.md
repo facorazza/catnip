@@ -37,6 +37,12 @@
 ## Installation
 
 ```bash
+python -m pip install quick-cat
+```
+
+or from source
+
+```bash
 git clone https://github.com/yourusername/quick-cat.git
 cd quick-cat
 pip install -r requirements.txt

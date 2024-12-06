@@ -35,6 +35,10 @@ jobs:
         pip install poetry
         poetry install
 
+    - name: Check for outdated packages
+      run: |
+        poetry show --outdated
+
     - name: Run tests
       run: |
         poetry run pytest tests/

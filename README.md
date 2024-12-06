@@ -27,7 +27,7 @@
 
 ## Prerequisites
 
-- Python 3.7+
+- Python 3.9+
 - Click library (`pip install click`)
 - Optional clipboard utilities:
   - Linux: `xclip` or `wl-copy`

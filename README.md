@@ -20,8 +20,9 @@
   - Automatic syntax highlighting
   - Filters out non-text and system files
 
-- 📋 **Flexible Clipboard Integration**
-  - Optional clipboard copying
+- 📋 **Flexible Output Options**
+  - Optional file output
+  - Optional clipboard integration
   - Cross-platform support (Linux, macOS, Windows)
   - Wayland and X11 compatibility
 
@@ -40,20 +41,19 @@
 python -m pip install quick-cat
 ```
 
-or from source
-
-```bash
-git clone https://github.com/yourusername/quick-cat.git
-cd quick-cat
-pip install -r requirements.txt
-```
-
 ## Usage Examples
 
 ### Basic Usage
 
 ```bash
-python quick-cat.py app.py ./source/config.py /static/js/script.js
+# Print to console and optionally copy to clipboard
+python quick-cat.py app.py source static/js/script.js
+
+# Save to a specific output file
+python quick-cat.py app.py config.py -o project_summary.md
+
+# Automatically copy to clipboard
+python quick-cat.py app.py config.py --copy
 ```
 
 ### Advanced Usage
@@ -69,7 +69,7 @@ python quick-cat.py . --exclude "*.pyc" --exclude ".git/*"
 ## Command Line Options
 
 - `paths`: One or more files or directories to concatenate
-- `-o, --output`: Custom output filename (default: `output.md`)
+- `-o, --output`: Optional output filename (will not save file by default)
 - `--copy/--no-copy`: Automatically copy output to clipboard
 - `--exclude`: Patterns to exclude from file search
 

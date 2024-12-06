@@ -231,7 +231,9 @@ def concatenate_files(files, output_file):
 
                 try:
                     with open(file, "r") as f:
-                        out_file.write(f.read())
+                        # Read the content and strip trailing newlines
+                        content = f.read().rstrip("\n")
+                        out_file.write(content)
                 except Exception as e:
                     logging.error(f"Error reading file {file}: {e}")
 

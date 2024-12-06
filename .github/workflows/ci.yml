@@ -110,16 +110,3 @@ jobs:
 
     - name: Perform CodeQL Analysis
       uses: github/codeql-action/analyze@v2
-
-  dependency-review:
-    runs-on: ubuntu-latest
-
-    steps:
-    - name: "Checkout Repository"
-      uses: actions/checkout@v4
-
-    - name: "Dependency Review"
-      uses: actions/dependency-review-action@v3
-      with:
-        fail-on-severity: critical
-

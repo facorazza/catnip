@@ -1,58 +1,92 @@
-![Quick Cat](quickcat.png)
+# quick-cat 🐱📋
 
-```txt
-________        .__        __     _________         __   
-\_____  \  __ __|__| ____ |  | __ \_   ___ \_____ _/  |_ 
- /  / \  \|  |  \  |/ ___\|  |/ / /    \  \/\__  \\   __\
-/   \_/.  \  |  /  \  \___|    <  \     \____/ __ \|  |  
-\_____\ \_/____/|__|\___  >__|_ \  \______  (____  /__|  
-       \__>             \/     \/         \/     \/
-```
+![Quick Cat Logo](quickcat.png)
 
-
-# quick-cat
-Script for concatenating files and prompting an LLM to quickly bring it up to speed on a project.
+**Rapid Project File Concatenation for LLM Comprehension**
 
 ## Overview
 
-`quick-cat.py` is a script designed to concatenate multiple files, add a directory structure, and format the content for markdown. This tool is especially useful for sharing projects with Large Language Models (LLMs) or collaborators, providing both content and structure to enhance understanding.
+`quick-cat.py` is a versatile Python script designed to simplify project understanding by concatenating multiple files into a single, well-formatted markdown document. It's specifically crafted to help Large Language Models (LLMs) and collaborators quickly grasp the structure and content of a project.
 
-## Purpose
+## Key Features
 
-The main goal of this script is to provide an organized and easy-to-read markdown document that includes multiple code files along with their directory structure. By providing both the content and the structure, it becomes easier to understand the context and relationships between the files.
+- 📂 **Comprehensive Directory Mapping**
+  - Generates a visual representation of project structure
+  - Supports recursive file discovery
+  - Intelligent file and directory exclusion
 
-## Usage Example
+- 🔍 **Intelligent File Parsing**
+  - Supports multiple programming languages
+  - Automatic syntax highlighting
+  - Filters out non-text and system files
 
-```sh
-python quick-cat.py app.py ./source/config.py /static/js/javascript.js /templates/index.html -o combined_output.md --copy
+- 📋 **Flexible Clipboard Integration**
+  - Optional clipboard copying
+  - Cross-platform support (Linux, macOS, Windows)
+  - Wayland and X11 compatibility
+
+## Prerequisites
+
+- Python 3.7+
+- Click library (`pip install click`)
+- Optional clipboard utilities:
+  - Linux: `xclip` or `wl-copy`
+  - macOS: Built-in `pbcopy`
+  - Windows: Built-in `clip`
+
+## Installation
+
+```bash
+git clone https://github.com/yourusername/quick-cat.git
+cd quick-cat
+pip install -r requirements.txt
 ```
 
-This command concatenates `app.py`, `config.py`, `javascript.js`, and `index.html` into a markdown file named `combined_output.md`, including a directory structure and syntax highlighting for each file's content. The `--copy` flag automatically copies the contents to the clipboard.
+## Usage Examples
 
-## Arguments
+### Basic Usage
 
-- `files` (list of str): List of file paths to concatenate.
-- `-o`, `--output` (str): Output file name (default: `output.md`).
-- `--copy`: Copy the output file contents to the clipboard.
+```bash
+python quick-cat.py app.py ./source/config.py /static/js/script.js
+```
 
-## Output
+### Advanced Usage
 
-The script produces a markdown file with the following features:
-- A visual representation of the directory structure of the input files.
-- Concatenated contents of each file, with appropriate markdown syntax highlighting based on file type.
+```bash
+# Specify output file and copy to clipboard
+python quick-cat.py app.py config.py -o project_summary.md --copy
+
+# Exclude specific file patterns
+python quick-cat.py . --exclude "*.pyc" --exclude ".git/*"
+```
+
+## Command Line Options
+
+- `paths`: One or more files or directories to concatenate
+- `-o, --output`: Custom output filename (default: `output.md`)
+- `--copy/--no-copy`: Automatically copy output to clipboard
+- `--exclude`: Patterns to exclude from file search
+
+## Performance Considerations
+
+- Filters out large binary files
+- Skips system and version control directories
+- Optimized for quick project overview generation
+
+## Troubleshooting
+
+- Ensure all required dependencies are installed
+- Check file and directory permissions
+- Verify clipboard utility installation on Linux
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Commit your changes
+4. Push to the branch
+5. Create a Pull Request
 
 ## License
 
-This project is licensed under the Apache 2.0 License - see the [LICENSE](LICENSE) file for details.
-
-## Getting Started
-
-To use the script, simply run the command with the appropriate file paths and options as shown in the usage example above. The script will generate a markdown file with the concatenated content and directory structure.
-
-## Guidelines for LLMs
-
-The script includes a detailed prompt for LLMs with specific guidelines to follow when providing code help. This ensures consistent and high-quality assistance from the LLMs.
-
-## LLM Prompt
-
-The LLM Prompt is embedded inside the script to keep it to one file, I have it separeted out and pulled into the final file automatically.  I also keep a readme on my project that is intended to help bring the LLM up to speed and I add that to the list of files I am concatenating.
+Apache 2.0 License - See [LICENSE](LICENSE) for details

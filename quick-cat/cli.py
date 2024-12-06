@@ -52,6 +52,22 @@ def get_files_recursively(paths, exclude_patterns=None):
         "*.gz",
         "*.rar",
         "*.7z",
+        "__init__.py",
+        "LICENSE",
+        # Common directories to exclude
+        "*/.git/*",
+        "*/.github/*",
+        "*/.vscode/*",
+        "*/.idea/*",
+        "*/node_modules/*",
+        "*/venv/*",
+        "*/.env/*",
+        "*/__pycache__/*",
+        "*/.pytest_cache/*",
+        "*/.mypy_cache/*",
+        "*/build/*",
+        "*/dist/*",
+        "*/egg-info/*",
     ]
 
     # Combine default exclusions with user-provided exclusions
@@ -62,31 +78,26 @@ def get_files_recursively(paths, exclude_patterns=None):
     for path in paths:
         path_obj = Path(path)
 
-        # If it's a file, add directly
         if path_obj.is_file():
-            if not any(
-                fnmatch.fnmatch(path_obj.name, pattern) for pattern in exclude_patterns
-            ):
+            if not any(fnmatch.fnmatch(str(path_obj), pattern) for pattern in exclude_patterns):
                 found_files.append(path_obj)
-            continue
+        elif path_obj.is_dir():
+            for root, dirs, files in os.walk(path_obj):
+                root_path = Path(root)
 
-        # If it's a directory, walk recursively
-        if path_obj.is_dir():
-            for root, _, files in os.walk(path_obj):
-                # Skip excluded directories
-                if any(
-                    fnmatch.fnmatch(os.path.basename(root), pattern)
-                    for pattern in exclude_patterns
-                ):
-                    continue
+                # Filter out excluded directories
+                dirs[:] = [
+                    d
+                    for d in dirs
+                    if not any(fnmatch.fnmatch(str(root_path / d), p) for p in exclude_patterns)
+                ]
 
                 for file in files:
-                    full_path = Path(root) / file
-                    # Check against exclusion patterns
+                    file_path = root_path / file
                     if not any(
-                        fnmatch.fnmatch(file, pattern) for pattern in exclude_patterns
+                        fnmatch.fnmatch(str(file_path), pattern) for pattern in exclude_patterns
                     ):
-                        found_files.append(full_path)
+                        found_files.append(file_path)
 
     return found_files
 
@@ -245,9 +256,7 @@ def copy_to_clipboard(output_file):
             # Check for Wayland or X11
             if is_wayland():
                 try:
-                    subprocess.run(
-                        ["wl-copy"], input=output_content.encode("utf-8"), check=True
-                    )
+                    subprocess.run(["wl-copy"], input=output_content.encode("utf-8"), check=True)
                     click.echo("Copied using wl-copy (Wayland)")
                 except FileNotFoundError:
                     try:
@@ -258,9 +267,7 @@ def copy_to_clipboard(output_file):
                         )
                         click.echo("Copied using xclip (X11)")
                     except FileNotFoundError:
-                        click.echo(
-                            "Neither wl-copy nor xclip found. Unable to copy to clipboard."
-                        )
+                        click.echo("Neither wl-copy nor xclip found. Unable to copy to clipboard.")
             else:
                 try:
                     subprocess.run(
@@ -286,17 +293,13 @@ def copy_to_clipboard(output_file):
 
 @click.command(help="Concatenate files with directory structure and content.")
 @click.argument("paths", nargs=-1, type=click.Path(exists=True))
-@click.option(
-    "-o", "--output", default="output.md", help="Output file name (default: output.md)"
-)
+@click.option("-o", "--output", default="output.md", help="Output file name (default: output.md)")
 @click.option(
     "--copy/--no-copy",
     default=False,
     help="Copy the output file contents to the clipboard",
 )
-@click.option(
-    "--exclude", multiple=True, help="Additional patterns to exclude from file search"
-)
+@click.option("--exclude", multiple=True, help="Additional patterns to exclude from file search")
 def main(paths, output, copy, exclude):
     """Main function to execute file concatenation."""
 

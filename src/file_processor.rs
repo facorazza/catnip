@@ -8,6 +8,8 @@ use std::path::{Path, PathBuf};
 use tracing::{Level, debug, error, info, instrument, span, warn};
 use walkdir::WalkDir;
 
+const BYTES_PER_MB: u64 = 1024 * 1024;
+
 #[instrument(skip(exclude_patterns, include_patterns))]
 pub async fn get_files_recursively(
     paths: &[PathBuf],
@@ -15,6 +17,7 @@ pub async fn get_files_recursively(
     include_patterns: &[String],
     ignore_comments: bool,
     ignore_docstrings: bool,
+    max_size_mb: u64,
 ) -> Result<Vec<PathBuf>> {
     let span = span!(
         Level::INFO,
@@ -25,35 +28,20 @@ pub async fn get_files_recursively(
     );
     let _enter = span.enter();
 
-    debug!("Building pattern lists");
-    let mut all_exclude = DEFAULT_EXCLUDE_PATTERNS
-        .iter()
-        .map(|s| s.to_string())
-        .collect::<Vec<_>>();
-    all_exclude.extend_from_slice(exclude_patterns);
-
-    let mut all_include = DEFAULT_INCLUDE_PATTERNS
-        .iter()
-        .map(|s| s.to_string())
-        .collect::<Vec<_>>();
-    all_include.extend_from_slice(include_patterns);
+    let all_exclude = build_pattern_list(DEFAULT_EXCLUDE_PATTERNS, exclude_patterns);
+    let all_include = build_pattern_list(DEFAULT_INCLUDE_PATTERNS, include_patterns);
+    let max_size_bytes = max_size_mb * BYTES_PER_MB;
 
     debug!(
-        "Total exclude patterns: {}, include patterns: {}",
+        "Exclude patterns: {}, Include patterns: {}, Max size: {}MB",
         all_exclude.len(),
-        all_include.len()
+        all_include.len(),
+        max_size_mb
     );
 
     let mut found_files = Vec::new();
 
-    for (i, path) in paths.iter().enumerate() {
-        debug!(
-            "Processing path {}/{}: {}",
-            i + 1,
-            paths.len(),
-            path.display()
-        );
-
+    for path in paths {
         if path.is_file() {
             if is_valid_file(
                 path,
@@ -61,35 +49,36 @@ pub async fn get_files_recursively(
                 &all_include,
                 ignore_comments,
                 ignore_docstrings,
+                max_size_bytes,
             )
             .await?
             {
-                debug!("Added file: {}", path.display());
                 found_files.push(path.clone());
             }
         } else if path.is_dir() {
-            let files_before = found_files.len();
             collect_files_recursive(
                 path,
                 &all_exclude,
                 &all_include,
                 ignore_comments,
                 ignore_docstrings,
+                max_size_bytes,
                 &mut found_files,
             )
             .await?;
-            let files_added = found_files.len() - files_before;
-            info!("Directory {} yielded {} files", path.display(), files_added);
         } else {
-            warn!(
-                "Path does not exist or is not accessible: {}",
-                path.display()
-            );
+            warn!("Path not found: {}", path.display());
         }
     }
 
     info!("Total files found: {}", found_files.len());
     Ok(found_files)
+}
+
+fn build_pattern_list(defaults: &[&str], additional: &[String]) -> Vec<String> {
+    let mut patterns = defaults.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+    patterns.extend_from_slice(additional);
+    patterns
 }
 
 #[instrument(skip(exclude_patterns, include_patterns, found_files))]
@@ -99,51 +88,30 @@ async fn collect_files_recursive(
     include_patterns: &[String],
     ignore_comments: bool,
     ignore_docstrings: bool,
+    max_size_bytes: u64,
     found_files: &mut Vec<PathBuf>,
 ) -> Result<()> {
-    debug!("Traversing directory: {}", dir.display());
-
-    let mut file_count = 0;
-    let mut dir_count = 0;
-    let mut excluded_count = 0;
-
-    for entry in WalkDir::new(dir).into_iter() {
+    for entry in WalkDir::new(dir)
+        .into_iter()
+        .filter_entry(|e| !matches_any_pattern(e.path(), exclude_patterns))
+    {
         let entry = entry.context("Failed to read directory entry")?;
         let path = entry.path();
 
-        if path.is_dir() {
-            dir_count += 1;
-            // Skip directories that match exclude patterns
-            if matches_any_pattern(path, exclude_patterns) {
-                debug!("Excluding directory: {}", path.display());
-                excluded_count += 1;
-                continue;
-            }
-        }
-
-        if path.is_file() {
-            file_count += 1;
-            if is_valid_file(
+        if path.is_file()
+            && is_valid_file(
                 path,
                 exclude_patterns,
                 include_patterns,
                 ignore_comments,
                 ignore_docstrings,
+                max_size_bytes,
             )
             .await?
-            {
-                debug!("Adding file: {}", path.display());
-                found_files.push(path.to_path_buf());
-            } else {
-                excluded_count += 1;
-            }
+        {
+            found_files.push(path.to_path_buf());
         }
     }
-
-    info!(
-        "Directory scan complete - Files: {}, Dirs: {}, Excluded: {}",
-        file_count, dir_count, excluded_count
-    );
 
     Ok(())
 }
@@ -155,49 +123,56 @@ async fn is_valid_file(
     include_patterns: &[String],
     ignore_comments: bool,
     ignore_docstrings: bool,
+    max_size_bytes: u64,
 ) -> Result<bool> {
-    // Check if file is empty
+    // Check file size first (quick check)
     let metadata = fs::metadata(file_path).context("Failed to read file metadata")?;
-    if metadata.len() == 0 {
-        debug!("Skipping empty file: {}", file_path.display());
+    if metadata.len() == 0 || metadata.len() > max_size_bytes {
         return Ok(false);
     }
 
-    // Check include patterns first
-    if !matches_any_pattern(file_path, include_patterns) {
-        debug!(
-            "File doesn't match include patterns: {}",
-            file_path.display()
-        );
+    // Check patterns
+    if !matches_any_pattern(file_path, include_patterns)
+        || matches_any_pattern(file_path, exclude_patterns)
+    {
         return Ok(false);
     }
 
-    // Check exclude patterns
-    if matches_any_pattern(file_path, exclude_patterns) {
-        debug!("File matches exclude patterns: {}", file_path.display());
+    // Check if file is likely binary
+    if is_likely_binary(file_path).await? {
         return Ok(false);
     }
 
     // Check content if needed
     if ignore_comments || ignore_docstrings {
-        debug!(
-            "Processing content for comments/docstrings: {}",
-            file_path.display()
-        );
         let content = fs::read_to_string(file_path).context("Failed to read file content")?;
         let processed_content =
             process_content(file_path, &content, ignore_comments, ignore_docstrings).await?;
 
         if processed_content.trim().is_empty() {
-            debug!(
-                "File became empty after processing: {}",
-                file_path.display()
-            );
             return Ok(false);
         }
     }
 
     Ok(true)
+}
+
+#[instrument]
+async fn is_likely_binary(file_path: &Path) -> Result<bool> {
+    // Read first 1KB to check for binary content
+    let content = match fs::read(file_path) {
+        Ok(data) => data,
+        Err(_) => return Ok(true), // Assume binary if can't read
+    };
+
+    let sample_size = std::cmp::min(1024, content.len());
+    let sample = &content[..sample_size];
+
+    // Check for null bytes (common in binary files)
+    let null_bytes = sample.iter().filter(|&&b| b == 0).count();
+    let binary_ratio = null_bytes as f64 / sample_size as f64;
+
+    Ok(binary_ratio > 0.01) // More than 1% null bytes suggests binary
 }
 
 #[instrument]
@@ -210,12 +185,10 @@ async fn process_content(
     let mut processed = content.to_string();
 
     if ignore_comments {
-        debug!("Removing comments from: {}", file_path.display());
         processed = remove_comments(file_path, &processed).await?;
     }
 
     if ignore_docstrings {
-        debug!("Removing docstrings from: {}", file_path.display());
         processed = remove_docstrings(&processed).await?;
     }
 
@@ -230,32 +203,22 @@ async fn remove_comments(file_path: &Path, content: &str) -> Result<String> {
         .unwrap_or("")
         .to_lowercase();
 
-    debug!("Removing comments for file type: {}", ext);
+    let pattern = match ext.as_str() {
+        "py" | "pyw" => r#"(#.*?$)|('''[\s\S]*?'''|"""[\s\S]*?""")"#,
+        "js" | "ts" | "java" | "c" | "cpp" | "cs" | "swift" | "rs" | "go" => {
+            r"(//.*?$)|(/\*[\s\S]*?\*/)"
+        }
+        "html" | "xml" => r"<!--[\s\S]*?-->",
+        _ => return Ok(content.to_string()),
+    };
 
-    match ext.as_str() {
-        "py" | "pyw" => {
-            let re = Regex::new(r#"(#.*?$)|('''.*?'''|""".*?""")"#)?;
-            Ok(re.replace_all(content, "").to_string())
-        }
-        "js" | "java" | "c" | "cpp" | "cs" | "swift" | "rs" => {
-            let re = Regex::new(r"(//.*?$)|(/\*.*?\*/)")?;
-            Ok(re.replace_all(content, "").to_string())
-        }
-        "html" | "xml" => {
-            let re = Regex::new(r"<!--.*?-->")?;
-            Ok(re.replace_all(content, "").to_string())
-        }
-        _ => {
-            debug!("No comment removal pattern for extension: {}", ext);
-            Ok(content.to_string())
-        }
-    }
+    let re = Regex::new(pattern)?;
+    Ok(re.replace_all(content, "").to_string())
 }
 
 #[instrument]
 async fn remove_docstrings(content: &str) -> Result<String> {
-    debug!("Removing docstrings from content");
-    let re = Regex::new(r#"('''.*?'''|""".*?""")"#)?;
+    let re = Regex::new(r#"('''[\s\S]*?'''|"""[\s\S]*?""")"#)?;
     Ok(re.replace_all(content, "").to_string())
 }
 
@@ -264,65 +227,44 @@ pub async fn concatenate_files(files: &[PathBuf], output_file: Option<&str>) -> 
     info!("Concatenating {} files", files.len());
 
     let mut output = String::new();
+    let current_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
 
     // Add project structure
-    debug!("Generating project structure");
-    output.push_str("# Project Structure\n\n");
-    output.push_str("├── ./\n");
-
+    output.push_str("# Project Structure\n\n├── ./\n");
     let directory_structure = generate_directory_structure(files);
     for line in directory_structure {
         output.push_str(&line);
         output.push('\n');
     }
-
     output.push_str("\n# File Contents\n\n");
 
     // Add file contents
     let mut sorted_files = files.to_vec();
     sorted_files.sort();
 
-    debug!("Processing file contents");
-    for (i, file) in sorted_files.iter().enumerate() {
-        debug!(
-            "Processing file {}/{}: {}",
-            i + 1,
-            sorted_files.len(),
-            file.display()
-        );
-
-        let current_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    for file in &sorted_files {
         let relative_path = file.strip_prefix(&current_dir).unwrap_or(file);
-
         let file_type = get_file_type(file);
 
-        output.push_str(&format!("## {}\n\n", relative_path.display()));
-        output.push_str(&format!("```{}\n", file_type));
+        output.push_str(&format!(
+            "## {}\n\n```{}\n",
+            relative_path.display(),
+            file_type
+        ));
 
         match fs::read_to_string(file) {
-            Ok(content) => {
-                output.push_str(&content.trim_end_matches('\n'));
-            }
-            Err(e) => {
-                error!("Error reading file {}: {}", file.display(), e);
-            }
+            Ok(content) => output.push_str(content.trim_end_matches('\n')),
+            Err(e) => error!("Error reading {}: {}", file.display(), e),
         }
 
         output.push_str("\n```\n\n");
     }
 
-    // Write to output file if specified
     if let Some(output_path) = output_file {
-        debug!("Writing output to file: {}", output_path);
         fs::write(output_path, &output).context("Failed to write output file")?;
-        info!("Successfully created output file: {}", output_path);
-        println!("Successfully created output file: {}", output_path);
+        info!("Output written to: {}", output_path);
     }
 
-    info!(
-        "Concatenation completed - total output size: {} characters",
-        output.len()
-    );
     Ok(output)
 }
 
@@ -334,38 +276,35 @@ fn get_file_type(file: &Path) -> &'static str {
         .to_lowercase();
 
     match ext.as_str() {
-        "py" => "python",
-        "js" => "javascript",
-        "html" => "html",
-        "css" => "css",
-        "json" => "json",
-        "log" => "",
-        "txt" => "",
-        "md" => "markdown",
-        "xml" => "xml",
-        "yaml" | "yml" => "yaml",
-        "sh" => "shell",
-        "c" => "c",
-        "cpp" => "cpp",
-        "java" => "java",
-        "php" => "php",
-        "rb" => "ruby",
-        "go" => "go",
-        "swift" => "swift",
-        "rs" => "rust",
-        "pl" => "perl",
-        "ps1" => "powershell",
-        "bat" => "batch",
-        "vbs" => "vbscript",
-        "ini" => "ini",
-        "toml" => "toml",
-        "csv" => "csv",
-        "tsv" => "tsv",
-        "rst" => "rst",
-        "tex" => "tex",
-        "org" => "org",
+        "py" | "pyw" => "python",
+        "js" | "mjs" => "javascript",
+        "ts" => "typescript",
         "jsx" => "jsx",
         "tsx" => "tsx",
+        "rs" => "rust",
+        "go" => "go",
+        "java" => "java",
+        "kt" => "kotlin",
+        "c" => "c",
+        "cpp" | "cc" | "cxx" => "cpp",
+        "cs" => "csharp",
+        "php" => "php",
+        "rb" => "ruby",
+        "swift" => "swift",
+        "html" | "htm" => "html",
+        "css" => "css",
+        "scss" => "scss",
+        "sass" => "sass",
+        "json" | "jsonc" => "json",
+        "yaml" | "yml" => "yaml",
+        "toml" => "toml",
+        "xml" => "xml",
+        "md" | "markdown" => "markdown",
+        "sh" | "bash" => "bash",
+        "ps1" => "powershell",
+        "bat" | "cmd" => "batch",
+        "sql" => "sql",
+        "dockerfile" => "dockerfile",
         _ => "",
     }
 }

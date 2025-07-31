@@ -15,8 +15,7 @@ pub fn generate_directory_structure(files: &[PathBuf]) -> Vec<String> {
     let mut root = BTreeMap::new();
 
     for file in files {
-        let relative_path = file.strip_prefix(&current_dir)
-            .unwrap_or(file);
+        let relative_path = file.strip_prefix(&current_dir).unwrap_or(file);
 
         add_to_tree(&mut root, relative_path);
     }
@@ -53,20 +52,17 @@ fn add_components_to_tree(
         tree.insert(component_name, TreeNode::File);
     } else {
         // This is a directory
-        let entry = tree.entry(component_name)
+        let entry = tree
+            .entry(component_name)
             .or_insert_with(|| TreeNode::Directory(BTreeMap::new()));
 
-        if let TreeNode::Directory(ref mut subtree) = entry {
+        if let TreeNode::Directory(subtree) = entry {
             add_components_to_tree(subtree, components, index + 1);
         }
     }
 }
 
-fn build_tree_lines(
-    tree: &BTreeMap<String, TreeNode>,
-    lines: &mut Vec<String>,
-    prefix: &str,
-) {
+fn build_tree_lines(tree: &BTreeMap<String, TreeNode>, lines: &mut Vec<String>, prefix: &str) {
     let items: Vec<_> = tree.iter().collect();
 
     for (i, (name, node)) in items.iter().enumerate() {

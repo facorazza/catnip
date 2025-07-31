@@ -1,17 +1,19 @@
 [package]
 name = "quick_cat"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 [[bin]]
 name = "quick_cat"
 path = "src/main.rs"
 
 [dependencies]
-anyhow = "1.0"
-clap = { version = "4.5", features = ["derive"] }
-copypasta = "0.10"
-env_logger = "0.10"
-log = "0.4"
+anyhow = "1.0.98"
+clap = { version = "4.5.42", features = ["derive"] }
+copypasta = "0.10.2"
 regex = "1.11"
+rustls = "0.23.31"
+tracing = "0.1.41"
+tracing-subscriber = { version = "0.3.19", features = ["env-filter", "fmt"] }
+tokio = { version = "1.47", features = ["full"] }
 walkdir = "2.5"

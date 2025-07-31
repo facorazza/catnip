@@ -1,0 +1,17 @@
+[package]
+name = "quick_cat"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "quick_cat"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1.0"
+clap = { version = "4.5", features = ["derive"] }
+copypasta = "0.10"
+env_logger = "0.10"
+log = "0.4"
+regex = "1.11"
+walkdir = "2.5"

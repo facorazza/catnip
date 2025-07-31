@@ -1,0 +1,27 @@
+pub const DEFAULT_EXCLUDE_PATTERNS: &[&str] = &[
+    // Compiled files and build artifacts
+    "*.pyc", "*.pyo", "*.pyd", "*.o", "*.so", "*.dll", "*.exe",
+    // Version control system directories
+    ".git/*", ".svn*", ".hg*", "*/.git/*", "*/.svn*", "*/.hg*",
+    // System and hidden files
+    ".DS_Store", "Thumbs.db", "*.tmp", "*.bak", ".*",
+    // Development and IDE artifacts
+    "*/.vscode*", "*/.idea*", "*/node_modules*", "*/__pycache__*",
+    "*/.mypy_cache*", "*/.pytest_cache*", "*/.env*", "*/.venv*",
+    // Build and distribution directories
+    "*/build*", "*/dist*", "*/out*", "*/.tox*", "*.egg-info*",
+    "*/target*", // Rust build directory
+    // Media and binary files
+    "*.jpg", "*.jpeg", "*.png", "*.gif", "*.bmp", "*.svg", "*.webp", "*.ico",
+    "*.wav", "*.mp3", "*.mp4", "*.mov", "*.avi",
+    // Compressed archives
+    "*.zip", "*.tar", "*.gz", "*.rar", "*.7z", "*.lock",
+    // Configuration and license files
+    "LICENSE", "*.log", "*.sqlite", "*.db",
+];
+
+pub const DEFAULT_INCLUDE_PATTERNS: &[&str] = &[
+    "*.py", "*.md", "*.txt", "*.toml", "*.json", "*.yml", "*.yaml",
+    "*.ini", "*.conf", "*.rst", "Dockerfile", "*.sh", "*.rs",
+    "*.js", "*.ts", "*.html", "*.css", "*.jsx", "*.tsx",
+];

@@ -1,9 +1,10 @@
-use quick_cat::exclusion_patterns::{DEFAULT_EXCLUDE_PATTERNS, DEFAULT_INCLUDE_PATTERNS};
-use quick_cat::file_processor::{concatenate_files, get_files_recursively};
-use quick_cat::pattern_matcher::{advanced_pattern_match, matches_any_pattern};
-use quick_cat::structure_generator::generate_directory_structure;
+use catnip::exclusion_patterns::{DEFAULT_EXCLUDE_PATTERNS, DEFAULT_INCLUDE_PATTERNS};
+use catnip::file_processor::{concatenate_files, get_files_recursively};
+use catnip::pattern_matcher::{advanced_pattern_match, matches_any_pattern};
+use catnip::structure_generator::generate_directory_structure;
 use std::fs;
 use std::path::PathBuf;
+use std::process::Command;
 use tempfile::TempDir;
 
 #[tokio::test]
@@ -315,12 +316,11 @@ async fn test_empty_file_handling() {
 #[cfg(test)]
 mod integration_tests {
     use super::*;
-    use std::process::Command;
 
     #[test]
     fn test_cli_help() {
         let output = Command::new("cargo")
-            .args(&["run", "--", "--help"])
+            .args(["run", "--", "--help"])
             .output()
             .expect("Failed to execute command");
 
@@ -332,7 +332,7 @@ mod integration_tests {
     #[test]
     fn test_cli_no_args() {
         let output = Command::new("cargo")
-            .args(&["run"])
+            .args(["run"])
             .output()
             .expect("Failed to execute command");
 
@@ -347,7 +347,7 @@ mod integration_tests {
         fs::write(&test_file, "fn main() {}").unwrap();
 
         let output = Command::new("cargo")
-            .args(&["run", "--", test_file.to_str().unwrap(), "--no-copy"])
+            .args(["run", "--", test_file.to_str().unwrap(), "--no-copy"])
             .output()
             .expect("Failed to execute command");
 
@@ -383,7 +383,7 @@ mod error_handling_tests {
 
             // Try to remove read permissions (may not work in all test environments)
             let _ = Command::new("chmod")
-                .args(&["000", restricted_dir.to_str().unwrap()])
+                .args(["000", restricted_dir.to_str().unwrap()])
                 .output();
 
             let files =

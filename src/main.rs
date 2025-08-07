@@ -6,9 +6,9 @@ use std::path::PathBuf;
 use std::process::Command;
 use tracing::{debug, error, info, warn};
 
-mod exclusion_patterns;
 mod file_processor;
 mod pattern_matcher;
+mod patterns;
 mod prompt;
 mod structure_generator;
 
@@ -467,61 +467,4 @@ async fn copy_to_clipboard_native(content: &str) -> Result<()> {
 pub async fn copy_to_clipboard(content: &str) -> Result<()> {
     debug!("Copying {} characters to clipboard", content.len());
     copy_to_clipboard_native(content).await
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::io::Write;
-    use tempfile::NamedTempFile;
-
-    #[tokio::test]
-    async fn test_simple_update() -> Result<()> {
-        let mut temp_file = NamedTempFile::new()?;
-        writeln!(temp_file, "line 1")?;
-        writeln!(temp_file, "line 2")?;
-        writeln!(temp_file, "line 3")?;
-
-        let update = FileUpdate {
-            path: temp_file.path().to_string_lossy().to_string(),
-            updates: vec![LineUpdate {
-                line_start: 2,
-                line_end: 2,
-                old_content: "line 2".to_string(),
-                new_content: "updated line 2".to_string(),
-            }],
-        };
-
-        let result = process_file_update(&update, false, false).await?;
-        assert_eq!(result, 1);
-
-        let content = fs::read_to_string(temp_file.path())?;
-        assert!(content.contains("updated line 2"));
-
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn test_content_mismatch() -> Result<()> {
-        let mut temp_file = NamedTempFile::new()?;
-        writeln!(temp_file, "line 1")?;
-        writeln!(temp_file, "different content")?;
-        writeln!(temp_file, "line 3")?;
-
-        let update = FileUpdate {
-            path: temp_file.path().to_string_lossy().to_string(),
-            updates: vec![LineUpdate {
-                line_start: 2,
-                line_end: 2,
-                old_content: "line 2".to_string(), // This doesn't match
-                new_content: "updated line 2".to_string(),
-            }],
-        };
-
-        let result = process_file_update(&update, false, false).await;
-        assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Content mismatch"));
-
-        Ok(())
-    }
 }

@@ -1,223 +1,265 @@
-use regex::Regex;
+use std::collections::HashSet;
 use std::path::Path;
 use tracing::{debug, instrument};
 
-/// Match files recursively by name, extension, or glob patterns
-#[instrument]
-pub fn match_path_recursive(path: &Path, pattern: &str) -> bool {
-    let path_str = path.to_string_lossy();
+#[derive(Debug)]
+pub struct PatternMatcher {
+    // Fast lookups for exact matches
+    exact_filenames: HashSet<String>,
+    exact_extensions: HashSet<String>,
+    exact_directories: HashSet<String>,
 
-    // Try different matching strategies
-    match_by_extension(&path_str, pattern) ||
-    match_by_filename(&path_str, pattern) ||
-    match_by_glob_pattern(&path_str, pattern) ||
-    match_by_directory_name(&path_str, pattern)
+    // Simple glob patterns
+    glob_patterns: Vec<GlobPattern>,
 }
 
-/// Match by file extension (e.g., "*.rs", "rs")
-fn match_by_extension(path: &str, pattern: &str) -> bool {
-    let extension = if pattern.starts_with("*.") {
-        &pattern[2..]
-    } else if !pattern.contains('.') && !pattern.contains('/') && !pattern.contains('*') {
-        pattern
-    } else {
-        return false;
-    };
-
-    let matches = path.ends_with(&format!(".{}", extension));
-    if matches {
-        debug!("Extension match: '{}' matches pattern '{}'", path, pattern);
-    }
-    matches
+#[derive(Debug)]
+struct GlobPattern {
+    pattern: String,
+    parts: Vec<GlobPart>,
 }
 
-/// Match by exact filename (e.g., "Cargo.toml", "main.rs")
-fn match_by_filename(path: &str, pattern: &str) -> bool {
-    if let Some(filename) = path.split('/').last() {
-        let matches = filename == pattern;
-        if matches {
-            debug!("Filename match: '{}' matches pattern '{}'", filename, pattern);
+#[derive(Debug)]
+enum GlobPart {
+    Literal(String),
+    Star,       // *
+    DoubleStar, // **
+    Question,   // ?
+}
+
+impl PatternMatcher {
+    pub fn new(patterns: &[String]) -> Self {
+        let mut exact_filenames = HashSet::new();
+        let mut exact_extensions = HashSet::new();
+        let mut exact_directories = HashSet::new();
+        let mut glob_patterns = Vec::new();
+
+        for pattern in patterns {
+            Self::categorize_pattern(
+                pattern.trim(),
+                &mut exact_filenames,
+                &mut exact_extensions,
+                &mut exact_directories,
+                &mut glob_patterns,
+            );
         }
-        return matches;
-    }
-    false
-}
 
-/// Match by directory name anywhere in the path
-fn match_by_directory_name(path: &str, pattern: &str) -> bool {
-    if pattern.contains('.') || pattern.contains('*') || pattern.contains('/') {
-        return false;
-    }
+        debug!(
+            "PatternMatcher created: {} exact filenames, {} extensions, {} directories, {} globs",
+            exact_filenames.len(),
+            exact_extensions.len(),
+            exact_directories.len(),
+            glob_patterns.len()
+        );
 
-    let path_components: Vec<&str> = path.split('/').collect();
-    let matches = path_components.iter().any(|&component| component == pattern);
-    if matches {
-        debug!("Directory name match: '{}' contains directory '{}'", path, pattern);
-    }
-    matches
-}
-
-/// Advanced glob pattern matching
-fn match_by_glob_pattern(path: &str, pattern: &str) -> bool {
-    if !pattern.contains('*') && !pattern.contains('?') && !pattern.contains('[') {
-        return false;
+        Self {
+            exact_filenames,
+            exact_extensions,
+            exact_directories,
+            glob_patterns,
+        }
     }
 
-    let regex_pattern = glob_to_regex(pattern);
-    match Regex::new(&regex_pattern) {
-        Ok(re) => {
-            let matches = re.is_match(path);
-            if matches {
-                debug!("Glob match: '{}' matches pattern '{}'", path, pattern);
+    fn categorize_pattern(
+        pattern: &str,
+        exact_filenames: &mut HashSet<String>,
+        exact_extensions: &mut HashSet<String>,
+        exact_directories: &mut HashSet<String>,
+        glob_patterns: &mut Vec<GlobPattern>,
+    ) {
+        // Extension patterns (*.rs, *.py, etc.)
+        if let Some(ext) = pattern.strip_prefix("*.") {
+            if !ext.contains('*') && !ext.contains('?') && !ext.contains('/') {
+                exact_extensions.insert(ext.to_string());
+                return;
             }
-            matches
         }
-        Err(e) => {
-            debug!("Invalid regex from glob '{}': {}", pattern, e);
-            false
+
+        // Exact filename patterns (Cargo.toml, main.rs, etc.)
+        if !pattern.contains('*') && !pattern.contains('?') && !pattern.contains('/') {
+            exact_filenames.insert(pattern.to_string());
+            return;
         }
+
+        // Simple directory patterns (node_modules, target, etc.)
+        if !pattern.contains('*')
+            && !pattern.contains('?')
+            && !pattern.contains('/')
+            && !pattern.contains('.')
+        {
+            exact_directories.insert(pattern.to_string());
+            return;
+        }
+
+        // Everything else becomes a glob pattern
+        glob_patterns.push(Self::parse_glob_pattern(pattern));
     }
-}
 
-/// Convert glob pattern to regex
-fn glob_to_regex(pattern: &str) -> String {
-    let mut regex_pattern = String::from("^");
-    let mut chars = pattern.chars().peekable();
+    fn parse_glob_pattern(pattern: &str) -> GlobPattern {
+        let mut parts = Vec::new();
+        let mut current_literal = String::new();
+        let mut chars = pattern.chars().peekable();
 
-    while let Some(ch) = chars.next() {
-        match ch {
-            '*' => {
-                if chars.peek() == Some(&'*') {
-                    chars.next(); // consume second *
-                    if chars.peek() == Some(&'/') {
-                        chars.next(); // consume /
-                        regex_pattern.push_str("(?:[^/]*/)*");
+        while let Some(ch) = chars.next() {
+            match ch {
+                '*' => {
+                    if chars.peek() == Some(&'*') {
+                        chars.next(); // consume second *
+                        if !current_literal.is_empty() {
+                            parts.push(GlobPart::Literal(current_literal.clone()));
+                            current_literal.clear();
+                        }
+                        parts.push(GlobPart::DoubleStar);
                     } else {
-                        regex_pattern.push_str(".*");
-                    }
-                } else {
-                    regex_pattern.push_str("[^/]*");
-                }
-            }
-            '?' => regex_pattern.push_str("[^/]"),
-            '[' => {
-                regex_pattern.push('[');
-                while let Some(class_char) = chars.next() {
-                    regex_pattern.push(class_char);
-                    if class_char == ']' {
-                        break;
+                        if !current_literal.is_empty() {
+                            parts.push(GlobPart::Literal(current_literal.clone()));
+                            current_literal.clear();
+                        }
+                        parts.push(GlobPart::Star);
                     }
                 }
+                '?' => {
+                    if !current_literal.is_empty() {
+                        parts.push(GlobPart::Literal(current_literal.clone()));
+                        current_literal.clear();
+                    }
+                    parts.push(GlobPart::Question);
+                }
+                _ => current_literal.push(ch),
             }
-            '.' | '^' | '$' | '(' | ')' | '{' | '}' | '+' | '|' | '\\' => {
-                regex_pattern.push('\\');
-                regex_pattern.push(ch);
-            }
-            _ => regex_pattern.push(ch),
+        }
+
+        if !current_literal.is_empty() {
+            parts.push(GlobPart::Literal(current_literal));
+        }
+
+        GlobPattern {
+            pattern: pattern.to_string(),
+            parts,
         }
     }
 
-    regex_pattern.push('$');
-    regex_pattern
-}
+    #[instrument(skip(self))]
+    pub fn matches_path(&self, path: &Path) -> bool {
+        let path_str = path.to_string_lossy();
+        let filename = path
+            .file_name()
+            .map(|n| n.to_string_lossy())
+            .unwrap_or_default();
 
-/// Enhanced pattern matching with multiple strategies
-#[instrument]
-pub fn advanced_pattern_match(path: &str, pattern: &str) -> bool {
-    // Direct string match for exact patterns
-    if path == pattern {
-        return true;
-    }
+        // Fast exact filename check
+        if self.exact_filenames.contains(filename.as_ref()) {
+            debug!("Exact filename match: {}", filename);
+            return true;
+        }
 
-    // Extension patterns (*.rs, *.py, etc.)
-    if pattern.starts_with("*.") {
-        let ext = &pattern[2..];
-        return path.ends_with(&format!(".{}", ext));
-    }
-
-    // Directory patterns with wildcards (*/target/*, node_modules/*)
-    if pattern.contains('/') {
-        return match_by_glob_pattern(path, pattern);
-    }
-
-    // Simple filename or directory name patterns
-    if !pattern.contains('*') && !pattern.contains('?') && !pattern.contains('[') {
-        // Try filename match
-        if let Some(filename) = path.split('/').last() {
-            if filename == pattern {
+        // Fast extension check
+        if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+            if self.exact_extensions.contains(ext) {
+                debug!("Extension match: .{}", ext);
                 return true;
             }
         }
 
-        // Try directory component match
-        let path_components: Vec<&str> = path.split('/').collect();
-        return path_components.contains(&pattern);
-    }
-
-    // Fallback to glob matching
-    match_by_glob_pattern(path, pattern)
-}
-
-/// Check if path matches any of the provided patterns
-#[instrument(skip(patterns))]
-pub fn matches_any_pattern(path: &Path, patterns: &[String]) -> bool {
-    let path_str = path.to_string_lossy();
-    let filename = path
-        .file_name()
-        .map(|n| n.to_string_lossy())
-        .unwrap_or_default();
-
-    let matches = patterns.iter().any(|pattern| {
-        // Try matching against full path first
-        if advanced_pattern_match(&path_str, pattern) {
-            return true;
+        // Fast directory check
+        for component in path.components() {
+            if let Some(dir_name) = component.as_os_str().to_str() {
+                if self.exact_directories.contains(dir_name) {
+                    debug!("Directory match: {}", dir_name);
+                    return true;
+                }
+            }
         }
 
-        // For simple patterns without path separators, also try against filename
-        if !pattern.contains('/') {
-            if advanced_pattern_match(&filename, pattern) {
+        // Glob pattern matching
+        for glob in &self.glob_patterns {
+            if self.matches_glob(&path_str, glob) {
+                debug!("Glob match: {} -> {}", glob.pattern, path_str);
                 return true;
             }
         }
 
         false
-    });
-
-    if matches {
-        debug!("Path '{}' matched pattern from {} total patterns", path_str, patterns.len());
     }
 
-    matches
-}
+    fn matches_glob(&self, path: &str, glob: &GlobPattern) -> bool {
+        self.match_parts(path, &glob.parts, 0, 0)
+    }
 
-/// Find all files matching patterns recursively from given paths
-pub fn find_matching_files<P: AsRef<Path>>(
-    root_paths: &[P],
-    patterns: &[String],
-) -> Vec<std::path::PathBuf> {
-    use walkdir::WalkDir;
-
-    let mut matching_files = Vec::new();
-
-    for root_path in root_paths {
-        let root = root_path.as_ref();
-
-        if root.is_file() {
-            if matches_any_pattern(root, patterns) {
-                matching_files.push(root.to_path_buf());
-            }
-            continue;
+    fn match_parts(
+        &self,
+        path: &str,
+        parts: &[GlobPart],
+        path_pos: usize,
+        part_idx: usize,
+    ) -> bool {
+        // If we've consumed all parts
+        if part_idx >= parts.len() {
+            return path_pos == path.len();
         }
 
-        for entry in WalkDir::new(root).into_iter().filter_map(|e| e.ok()) {
-            let path = entry.path();
-            if path.is_file() && matches_any_pattern(path, patterns) {
-                matching_files.push(path.to_path_buf());
+        // If we've consumed all of the path but have parts left
+        if path_pos >= path.len() {
+            // Only OK if all remaining parts are stars
+            return parts[part_idx..]
+                .iter()
+                .all(|p| matches!(p, GlobPart::Star | GlobPart::DoubleStar));
+        }
+
+        match &parts[part_idx] {
+            GlobPart::Literal(lit) => {
+                if path[path_pos..].starts_with(lit) {
+                    self.match_parts(path, parts, path_pos + lit.len(), part_idx + 1)
+                } else {
+                    false
+                }
+            }
+            GlobPart::Question => {
+                let next_char_boundary = path[path_pos..]
+                    .char_indices()
+                    .nth(1)
+                    .map(|(i, _)| path_pos + i)
+                    .unwrap_or(path.len());
+
+                if path_pos < path.len() && !path.chars().nth(path_pos).unwrap_or('\0').eq(&'/') {
+                    self.match_parts(path, parts, next_char_boundary, part_idx + 1)
+                } else {
+                    false
+                }
+            }
+            GlobPart::Star => {
+                // Try matching zero characters
+                if self.match_parts(path, parts, path_pos, part_idx + 1) {
+                    return true;
+                }
+
+                // Try matching one or more characters (but not path separator)
+                for i in path_pos + 1..=path.len() {
+                    if path[path_pos..i].contains('/') {
+                        break;
+                    }
+                    if self.match_parts(path, parts, i, part_idx + 1) {
+                        return true;
+                    }
+                }
+                false
+            }
+            GlobPart::DoubleStar => {
+                // Try matching zero characters
+                if self.match_parts(path, parts, path_pos, part_idx + 1) {
+                    return true;
+                }
+
+                // Try matching one or more characters (including path separator)
+                for i in path_pos + 1..=path.len() {
+                    if self.match_parts(path, parts, i, part_idx + 1) {
+                        return true;
+                    }
+                }
+                false
             }
         }
     }
-
-    matching_files
 }
 
 #[cfg(test)]
@@ -226,41 +268,64 @@ mod tests {
     use std::path::PathBuf;
 
     #[test]
-    fn test_extension_patterns() {
-        assert!(match_path_recursive(&PathBuf::from("main.rs"), "*.rs"));
-        assert!(match_path_recursive(&PathBuf::from("src/main.rs"), "*.rs"));
-        assert!(match_path_recursive(&PathBuf::from("main.rs"), "rs"));
-        assert!(!match_path_recursive(&PathBuf::from("main.py"), "*.rs"));
+    fn test_exact_matching() {
+        let matcher = PatternMatcher::new(&[
+            "*.rs".to_string(),
+            "Cargo.toml".to_string(),
+            "target".to_string(),
+        ]);
+
+        // Extension matching
+        assert!(matcher.matches_path(&PathBuf::from("main.rs")));
+        assert!(matcher.matches_path(&PathBuf::from("src/lib.rs")));
+
+        // Filename matching
+        assert!(matcher.matches_path(&PathBuf::from("Cargo.toml")));
+        assert!(matcher.matches_path(&PathBuf::from("project/Cargo.toml")));
+
+        // Directory matching
+        assert!(matcher.matches_path(&PathBuf::from("target/debug/main")));
+        assert!(matcher.matches_path(&PathBuf::from("src/target/file")));
     }
 
     #[test]
-    fn test_filename_patterns() {
-        assert!(match_path_recursive(&PathBuf::from("Cargo.toml"), "Cargo.toml"));
-        assert!(match_path_recursive(&PathBuf::from("src/Cargo.toml"), "Cargo.toml"));
-        assert!(!match_path_recursive(&PathBuf::from("package.json"), "Cargo.toml"));
+    fn test_glob_matching() {
+        let matcher = PatternMatcher::new(&[
+            "src/*.rs".to_string(),
+            "tests/**/*.rs".to_string(),
+            "*.?s".to_string(),
+        ]);
+
+        // Simple glob
+        assert!(matcher.matches_path(&PathBuf::from("src/main.rs")));
+        assert!(!matcher.matches_path(&PathBuf::from("tests/main.rs")));
+
+        // Double star
+        assert!(matcher.matches_path(&PathBuf::from("tests/unit/test.rs")));
+        assert!(matcher.matches_path(&PathBuf::from("tests/integration/deep/test.rs")));
+
+        // Question mark
+        assert!(matcher.matches_path(&PathBuf::from("main.rs")));
+        assert!(matcher.matches_path(&PathBuf::from("main.js")));
+        assert!(!matcher.matches_path(&PathBuf::from("main.txt")));
+    }
+
+    #[test]
+    fn test_non_matches() {
+        let matcher = PatternMatcher::new(&["*.rs".to_string(), "src/*".to_string()]);
+
+        assert!(!matcher.matches_path(&PathBuf::from("file.txt")));
+        assert!(!matcher.matches_path(&PathBuf::from("README.md")));
+        assert!(!matcher.matches_path(&PathBuf::from("tests/main.rs"))); // doesn't match src/*
     }
 
     #[test]
     fn test_directory_patterns() {
-        assert!(match_path_recursive(&PathBuf::from("target/debug/main"), "target"));
-        assert!(match_path_recursive(&PathBuf::from("src/target/file.rs"), "target"));
-        assert!(!match_path_recursive(&PathBuf::from("src/main.rs"), "target"));
-    }
+        let matcher =
+            PatternMatcher::new(&["target/*".to_string(), "**/node_modules/*".to_string()]);
 
-    #[test]
-    fn test_glob_patterns() {
-        assert!(match_path_recursive(&PathBuf::from("target/debug/main"), "target/*"));
-        assert!(match_path_recursive(&PathBuf::from("target/debug/main"), "*/debug/*"));
-        assert!(match_path_recursive(&PathBuf::from("src/lib.rs"), "src/*.rs"));
-        assert!(!match_path_recursive(&PathBuf::from("src/main.rs"), "target/*"));
-    }
-
-    #[test]
-    fn test_find_matching_files() {
-        // This would need actual files to test properly
-        let patterns = vec!["*.rs".to_string(), "Cargo.toml".to_string()];
-        let results = find_matching_files(&[PathBuf::from(".")], &patterns);
-        // In a real Rust project, this should find .rs files and Cargo.toml
-        assert!(!results.is_empty() || true); // Allow empty for test environment
+        assert!(matcher.matches_path(&PathBuf::from("target/debug/main")));
+        assert!(matcher.matches_path(&PathBuf::from("project/node_modules/lib/index.js")));
+        assert!(matcher.matches_path(&PathBuf::from("deep/project/node_modules/lib.js")));
     }
 }

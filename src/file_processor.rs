@@ -8,7 +8,7 @@ use tokio::fs;
 use tracing::{debug, info, instrument, warn};
 use walkdir::{DirEntry, WalkDir};
 
-fn get_language_from_extension(path: &Path) -> &'static str {
+pub fn get_language_from_extension(path: &Path) -> &'static str {
     match path.extension().and_then(|s| s.to_str()) {
         Some("rs") => "rust",
         Some("py") | Some("pyw") => "python",
@@ -71,12 +71,12 @@ fn get_language_from_extension(path: &Path) -> &'static str {
     }
 }
 
-fn is_binary_file(content: &[u8]) -> bool {
+pub fn is_binary_file(content: &[u8]) -> bool {
     let check_len = content.len().min(1024);
     content[..check_len].contains(&0)
 }
 
-fn remove_comments_and_docstrings(
+pub fn remove_comments_and_docstrings(
     content: &str,
     language: &str,
     ignore_comments: bool,
@@ -134,14 +134,12 @@ fn should_skip_directory(entry: &DirEntry, exclude_matcher: &PatternMatcher) -> 
     let path = entry.path();
 
     // Quick checks for common directories to skip
-    if let Some(dir_name) = path.file_name().and_then(|n| n.to_str()) {
-        match dir_name {
-            ".git" | ".svn" | ".hg" | ".bzr" | "node_modules" | "__pycache__" | ".mypy_cache"
-            | ".pytest_cache" | ".vscode" | ".idea" | "target" | "build" | "dist" | "out" => {
-                return true;
-            }
-            _ => {}
-        }
+    if let Some(
+        ".git" | ".svn" | ".hg" | ".bzr" | "node_modules" | "__pycache__" | ".mypy_cache"
+        | ".pytest_cache" | ".vscode" | ".idea" | "target" | "build" | "dist" | "out",
+    ) = path.file_name().and_then(|n| n.to_str())
+    {
+        return true;
     }
 
     exclude_matcher.matches_path(path)
@@ -291,7 +289,12 @@ pub async fn get_files_recursively(
 }
 
 #[instrument(skip(files))]
-pub async fn concatenate_files(files: &[PathBuf], output_file: Option<&str>) -> Result<String> {
+pub async fn concatenate_files(
+    files: &[PathBuf],
+    output_file: Option<&str>,
+    ignore_comments: bool,
+    ignore_docstrings: bool,
+) -> Result<String> {
     let mut result = String::new();
 
     // Generate directory structure

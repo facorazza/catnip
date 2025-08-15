@@ -170,7 +170,13 @@ async fn execute_cat(
 
     info!("Found {} files to process", files.len());
 
-    let mut result = file_processor::concatenate_files(&files, output.as_deref()).await?;
+    let mut result = file_processor::concatenate_files(
+        &files,
+        output.as_deref(),
+        ignore_comments,
+        ignore_docstrings,
+    )
+    .await?;
 
     // Add prompt instructions if requested
     if include_prompt {

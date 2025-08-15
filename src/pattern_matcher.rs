@@ -9,7 +9,7 @@ pub struct PatternMatcher {
     exact_extensions: HashSet<String>,
     exact_directories: HashSet<String>,
 
-    // Simple glob patterns
+    // Simple patterns that need more complex matching
     glob_patterns: Vec<GlobPattern>,
 }
 
@@ -81,13 +81,14 @@ impl PatternMatcher {
             return;
         }
 
-        // Simple directory patterns (node_modules, target, etc.)
-        if !pattern.contains('*')
-            && !pattern.contains('?')
-            && !pattern.contains('/')
-            && !pattern.contains('.')
+        // Simple directory patterns - handle both "dir" and "dir/*" as the same
+        let clean_pattern = pattern.strip_suffix("/*").unwrap_or(pattern);
+        if !clean_pattern.contains('*')
+            && !clean_pattern.contains('?')
+            && !clean_pattern.contains('/')
+            && !clean_pattern.contains('.')
         {
-            exact_directories.insert(pattern.to_string());
+            exact_directories.insert(clean_pattern.to_string());
             return;
         }
 
@@ -141,7 +142,6 @@ impl PatternMatcher {
 
     #[instrument(skip(self))]
     pub fn matches_path(&self, path: &Path) -> bool {
-        let path_str = path.to_string_lossy();
         let filename = path
             .file_name()
             .map(|n| n.to_string_lossy())
@@ -161,7 +161,7 @@ impl PatternMatcher {
             }
         }
 
-        // Fast directory check
+        // Fast directory check - check if any path component matches
         for component in path.components() {
             if let Some(dir_name) = component.as_os_str().to_str() {
                 if self.exact_directories.contains(dir_name) {
@@ -171,9 +171,10 @@ impl PatternMatcher {
             }
         }
 
-        // Glob pattern matching
+        // Glob pattern matching (only if no fast matches)
+        let path_str = path.to_string_lossy();
         for glob in &self.glob_patterns {
-            if self.matches_glob(&path_str, glob) {
+            if Self::matches_glob(&path_str, glob) {
                 debug!("Glob match: {} -> {}", glob.pattern, path_str);
                 return true;
             }
@@ -182,12 +183,11 @@ impl PatternMatcher {
         false
     }
 
-    fn matches_glob(&self, path: &str, glob: &GlobPattern) -> bool {
-        self.match_parts(path, &glob.parts, 0, 0)
+    fn matches_glob(path: &str, glob: &GlobPattern) -> bool {
+        Self::match_parts(path, &glob.parts, 0, 0)
     }
 
     fn match_parts(
-        &self,
         path: &str,
         parts: &[GlobPart],
         path_pos: usize,
@@ -209,7 +209,7 @@ impl PatternMatcher {
         match &parts[part_idx] {
             GlobPart::Literal(lit) => {
                 if path[path_pos..].starts_with(lit) {
-                    self.match_parts(path, parts, path_pos + lit.len(), part_idx + 1)
+                    Self::match_parts(path, parts, path_pos + lit.len(), part_idx + 1)
                 } else {
                     false
                 }
@@ -222,14 +222,14 @@ impl PatternMatcher {
                     .unwrap_or(path.len());
 
                 if path_pos < path.len() && !path.chars().nth(path_pos).unwrap_or('\0').eq(&'/') {
-                    self.match_parts(path, parts, next_char_boundary, part_idx + 1)
+                    Self::match_parts(path, parts, next_char_boundary, part_idx + 1)
                 } else {
                     false
                 }
             }
             GlobPart::Star => {
                 // Try matching zero characters
-                if self.match_parts(path, parts, path_pos, part_idx + 1) {
+                if Self::match_parts(path, parts, path_pos, part_idx + 1) {
                     return true;
                 }
 
@@ -238,7 +238,7 @@ impl PatternMatcher {
                     if path[path_pos..i].contains('/') {
                         break;
                     }
-                    if self.match_parts(path, parts, i, part_idx + 1) {
+                    if Self::match_parts(path, parts, i, part_idx + 1) {
                         return true;
                     }
                 }
@@ -246,13 +246,13 @@ impl PatternMatcher {
             }
             GlobPart::DoubleStar => {
                 // Try matching zero characters
-                if self.match_parts(path, parts, path_pos, part_idx + 1) {
+                if Self::match_parts(path, parts, path_pos, part_idx + 1) {
                     return true;
                 }
 
                 // Try matching one or more characters (including path separator)
                 for i in path_pos + 1..=path.len() {
-                    if self.match_parts(path, parts, i, part_idx + 1) {
+                    if Self::match_parts(path, parts, i, part_idx + 1) {
                         return true;
                     }
                 }
@@ -272,7 +272,7 @@ mod tests {
         let matcher = PatternMatcher::new(&[
             "*.rs".to_string(),
             "Cargo.toml".to_string(),
-            "target".to_string(),
+            "target".to_string(), // Just "target", not "target/*"
         ]);
 
         // Extension matching
@@ -283,13 +283,29 @@ mod tests {
         assert!(matcher.matches_path(&PathBuf::from("Cargo.toml")));
         assert!(matcher.matches_path(&PathBuf::from("project/Cargo.toml")));
 
-        // Directory matching
+        // Directory matching - should match any path containing "target"
         assert!(matcher.matches_path(&PathBuf::from("target/debug/main")));
         assert!(matcher.matches_path(&PathBuf::from("src/target/file")));
+        assert!(matcher.matches_path(&PathBuf::from("project/target")));
     }
 
     #[test]
-    fn test_glob_matching() {
+    fn test_directory_patterns_optimization() {
+        let matcher = PatternMatcher::new(&[
+            "node_modules".to_string(), // No /* suffix needed
+            "target/*".to_string(),     // Should be treated same as "target"
+            "__pycache__".to_string(),
+        ]);
+
+        // All should match directory names anywhere in path
+        assert!(matcher.matches_path(&PathBuf::from("node_modules/lib.js")));
+        assert!(matcher.matches_path(&PathBuf::from("project/node_modules/react/index.js")));
+        assert!(matcher.matches_path(&PathBuf::from("target/debug")));
+        assert!(matcher.matches_path(&PathBuf::from("src/__pycache__/file.pyc")));
+    }
+
+    #[test]
+    fn test_glob_patterns() {
         let matcher = PatternMatcher::new(&[
             "src/*.rs".to_string(),
             "tests/**/*.rs".to_string(),
@@ -311,21 +327,21 @@ mod tests {
     }
 
     #[test]
-    fn test_non_matches() {
-        let matcher = PatternMatcher::new(&["*.rs".to_string(), "src/*".to_string()]);
+    fn test_performance_optimization() {
+        // Test that exact matches are faster than glob matches
+        let matcher = PatternMatcher::new(&[
+            "*.rs".to_string(),
+            "node_modules".to_string(),
+            "Cargo.toml".to_string(),
+            "complex/**/pattern/**/*.test.js".to_string(), // Complex pattern should be slower
+        ]);
 
-        assert!(!matcher.matches_path(&PathBuf::from("file.txt")));
-        assert!(!matcher.matches_path(&PathBuf::from("README.md")));
-        assert!(!matcher.matches_path(&PathBuf::from("tests/main.rs"))); // doesn't match src/*
-    }
+        // These should use fast paths
+        assert!(matcher.matches_path(&PathBuf::from("main.rs"))); // Extension fast path
+        assert!(matcher.matches_path(&PathBuf::from("Cargo.toml"))); // Filename fast path
+        assert!(matcher.matches_path(&PathBuf::from("node_modules/lib.js"))); // Directory fast path
 
-    #[test]
-    fn test_directory_patterns() {
-        let matcher =
-            PatternMatcher::new(&["target/*".to_string(), "**/node_modules/*".to_string()]);
-
-        assert!(matcher.matches_path(&PathBuf::from("target/debug/main")));
-        assert!(matcher.matches_path(&PathBuf::from("project/node_modules/lib/index.js")));
-        assert!(matcher.matches_path(&PathBuf::from("deep/project/node_modules/lib.js")));
+        // This should use glob matching
+        assert!(matcher.matches_path(&PathBuf::from("complex/deep/pattern/nested/file.test.js")));
     }
 }

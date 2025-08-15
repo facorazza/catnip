@@ -1,351 +1,419 @@
-use crate::pattern_matcher::PatternMatcher;
-use crate::patterns::{DEFAULT_EXCLUDE_PATTERNS, DEFAULT_INCLUDE_PATTERNS};
-use crate::structure_generator::generate_directory_structure;
-use anyhow::Result;
-use regex::Regex;
-use std::path::{Path, PathBuf};
+use catnip::file_processor::*;
+use std::path::Path;
+use tempfile::TempDir;
 use tokio::fs;
-use tracing::{debug, info, instrument, warn};
-use walkdir::{DirEntry, WalkDir};
 
-fn get_language_from_extension(path: &Path) -> &'static str {
-    match path.extension().and_then(|s| s.to_str()) {
-        Some("rs") => "rust",
-        Some("py") | Some("pyw") => "python",
-        Some("js") | Some("mjs") => "javascript",
-        Some("ts") => "typescript",
-        Some("tsx") | Some("jsx") => "jsx",
-        Some("java") => "java",
-        Some("kt") => "kotlin",
-        Some("scala") => "scala",
-        Some("clj") => "clojure",
-        Some("c") => "c",
-        Some("cpp") | Some("cc") | Some("cxx") => "cpp",
-        Some("h") | Some("hpp") => "c",
-        Some("cs") => "csharp",
-        Some("fs") => "fsharp",
-        Some("vb") => "vbnet",
-        Some("php") => "php",
-        Some("rb") => "ruby",
-        Some("go") => "go",
-        Some("swift") => "swift",
-        Some("m") | Some("mm") => "objc",
-        Some("dart") => "dart",
-        Some("lua") => "lua",
-        Some("pl") => "perl",
-        Some("r") | Some("R") => "r",
-        Some("html") | Some("htm") => "html",
-        Some("css") => "css",
-        Some("scss") => "scss",
-        Some("sass") => "sass",
-        Some("less") => "less",
-        Some("vue") => "vue",
-        Some("svelte") => "svelte",
-        Some("json") | Some("jsonc") => "json",
-        Some("yaml") | Some("yml") => "yaml",
-        Some("toml") => "toml",
-        Some("xml") => "xml",
-        Some("sql") => "sql",
-        Some("sh") | Some("bash") => "bash",
-        Some("zsh") => "zsh",
-        Some("fish") => "fish",
-        Some("ps1") => "powershell",
-        Some("bat") | Some("cmd") => "batch",
-        Some("tf") => "hcl",
-        Some("dockerfile") => "dockerfile",
-        Some("md") | Some("markdown") => "markdown",
-        Some("tex") => "latex",
-        Some("cmake") => "cmake",
-        _ => {
-            if let Some(filename) = path.file_name().and_then(|s| s.to_str()) {
-                match filename {
-                    "Makefile" | "makefile" => "makefile",
-                    "Dockerfile" => "dockerfile",
-                    "Jenkinsfile" => "groovy",
-                    _ => "text",
-                }
-            } else {
-                "text"
-            }
-        }
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_get_language_from_extension() {
+        assert_eq!(get_language_from_extension(Path::new("main.rs")), "rust");
+        assert_eq!(
+            get_language_from_extension(Path::new("script.py")),
+            "python"
+        );
+        assert_eq!(
+            get_language_from_extension(Path::new("app.js")),
+            "javascript"
+        );
+        assert_eq!(
+            get_language_from_extension(Path::new("component.tsx")),
+            "jsx"
+        );
+        assert_eq!(get_language_from_extension(Path::new("style.css")), "css");
+        assert_eq!(
+            get_language_from_extension(Path::new("config.yaml")),
+            "yaml"
+        );
+        assert_eq!(
+            get_language_from_extension(Path::new("Dockerfile")),
+            "dockerfile"
+        );
+        assert_eq!(
+            get_language_from_extension(Path::new("Makefile")),
+            "makefile"
+        );
+        assert_eq!(
+            get_language_from_extension(Path::new("unknown.xyz")),
+            "text"
+        );
     }
+
+    #[test]
+    fn test_is_binary_file() {
+        // Text content
+        let text_content = b"Hello, world!\nThis is text.";
+        assert!(!is_binary_file(text_content));
+
+        // Binary content with null bytes
+        let binary_content = b"Hello\x00\x01\x02World";
+        assert!(is_binary_file(binary_content));
+
+        // Empty content
+        let empty_content = b"";
+        assert!(!is_binary_file(empty_content));
+
+        // Content with high bytes but no nulls (could be UTF-8)
+        let utf8_content = "Hello 世界".as_bytes();
+        assert!(!is_binary_file(utf8_content));
+    }
+
+    #[test]
+    fn test_remove_comments_rust() {
+        let rust_code = r#"
+// This is a line comment
+fn main() {
+    /* This is a block comment */
+    println!("Hello, world!");
+    // Another comment
+}"#;
+
+        let result = remove_comments_and_docstrings(rust_code, "rust", true, false);
+
+        assert!(!result.contains("// This is a line comment"));
+        assert!(!result.contains("/* This is a block comment */"));
+        assert!(result.contains("fn main()"));
+        assert!(result.contains("println!"));
+    }
+
+    #[test]
+    fn test_remove_comments_python() {
+        let python_code = r#"
+# This is a comment
+def hello():
+    """This is a docstring"""
+    print("Hello")  # Inline comment
+    '''Another docstring'''
+    return True
+"#;
+
+        let result_comments = remove_comments_and_docstrings(python_code, "python", true, false);
+        assert!(!result_comments.contains("# This is a comment"));
+        assert!(!result_comments.contains("# Inline comment"));
+        assert!(result_comments.contains("def hello()"));
+
+        let result_docstrings = remove_comments_and_docstrings(python_code, "python", false, true);
+        assert!(!result_docstrings.contains("\"\"\"This is a docstring\"\"\""));
+        assert!(!result_docstrings.contains("'''Another docstring'''"));
+        assert!(result_docstrings.contains("def hello()"));
+
+        let result_both = remove_comments_and_docstrings(python_code, "python", true, true);
+        assert!(!result_both.contains("# This is a comment"));
+        assert!(!result_both.contains("\"\"\"This is a docstring\"\"\""));
+        assert!(result_both.contains("def hello()"));
+    }
+
+    #[test]
+    fn test_remove_comments_disabled() {
+        let code = r#"
+// This comment should remain
+fn test() {
+    /* Block comment */
+    println!("test");
 }
+"#;
 
-fn is_binary_file(content: &[u8]) -> bool {
-    let check_len = content.len().min(1024);
-    content[..check_len].contains(&0)
-}
-
-fn remove_comments_and_docstrings(
-    content: &str,
-    language: &str,
-    ignore_comments: bool,
-    ignore_docstrings: bool,
-) -> String {
-    if !ignore_comments && !ignore_docstrings {
-        return content.to_string();
+        let result = remove_comments_and_docstrings(code, "rust", false, false);
+        assert_eq!(result, code); // Should be unchanged
     }
 
-    let mut result = content.to_string();
+    #[tokio::test]
+    async fn test_get_files_recursively_single_file() {
+        let temp_dir = TempDir::new().unwrap();
+        let temp_path = temp_dir.path();
 
-    if ignore_comments || ignore_docstrings {
-        match language {
-            "rust" | "javascript" | "typescript" | "java" | "kotlin" | "scala" | "c" | "cpp"
-            | "csharp" | "go" | "swift" | "dart" => {
-                if ignore_comments {
-                    let re = Regex::new(r"//.*$").unwrap();
-                    result = re.replace_all(&result, "").to_string();
+        let test_file = temp_path.join("test.rs");
+        fs::write(&test_file, "fn main() {}").await.unwrap();
 
-                    let re = Regex::new(r"/\*.*?\*/").unwrap();
-                    result = re.replace_all(&result, "").to_string();
-                }
-            }
-            "python" => {
-                if ignore_comments {
-                    let re = Regex::new(r"#.*$").unwrap();
-                    result = re.replace_all(&result, "").to_string();
-                }
-                if ignore_docstrings {
-                    let re = Regex::new(r#""""".*?""""#).unwrap();
-                    result = re.replace_all(&result, "").to_string();
-                    let re = Regex::new(r"'''.*?'''").unwrap();
-                    result = re.replace_all(&result, "").to_string();
-                }
-            }
-            "ruby" | "bash" | "sh" | "zsh" | "fish" => {
-                if ignore_comments {
-                    let re = Regex::new(r"#.*$").unwrap();
-                    result = re.replace_all(&result, "").to_string();
-                }
-            }
-            _ => {}
-        }
+        let files = get_files_recursively(&[test_file.clone()], &[], &[], false, false, 10)
+            .await
+            .unwrap();
+
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0], test_file);
     }
 
-    result
-        .lines()
-        .filter(|line| !line.trim().is_empty())
-        .collect::<Vec<_>>()
-        .join("\n")
-}
+    #[tokio::test]
+    async fn test_get_files_recursively_directory() {
+        let temp_dir = TempDir::new().unwrap();
+        let temp_path = temp_dir.path();
 
-// Optimized directory filter function
-fn should_skip_directory(entry: &DirEntry, exclude_matcher: &PatternMatcher) -> bool {
-    let path = entry.path();
+        // Create test files
+        fs::create_dir_all(temp_path.join("src")).await.unwrap();
+        fs::write(temp_path.join("src/main.rs"), "fn main() {}")
+            .await
+            .unwrap();
+        fs::write(temp_path.join("src/lib.rs"), "pub fn test() {}")
+            .await
+            .unwrap();
+        fs::write(temp_path.join("README.md"), "# Test")
+            .await
+            .unwrap();
+        fs::write(temp_path.join("Cargo.toml"), "[package]")
+            .await
+            .unwrap();
 
-    // Quick checks for common directories to skip
-    if let Some(dir_name) = path.file_name().and_then(|n| n.to_str()) {
-        match dir_name {
-            ".git" | ".svn" | ".hg" | ".bzr" | "node_modules" | "__pycache__" | ".mypy_cache"
-            | ".pytest_cache" | ".vscode" | ".idea" | "target" | "build" | "dist" | "out" => {
-                return true;
-            }
-            _ => {}
-        }
-    }
+        // Create excluded directory
+        fs::create_dir_all(temp_path.join("target")).await.unwrap();
+        fs::write(temp_path.join("target/debug"), "binary")
+            .await
+            .unwrap();
 
-    exclude_matcher.matches_path(path)
-}
+        let files = get_files_recursively(&[temp_path.to_path_buf()], &[], &[], false, false, 10)
+            .await
+            .unwrap();
 
-// Optimized file filter function
-fn should_include_file_fast(
-    entry: &DirEntry,
-    exclude_matcher: &PatternMatcher,
-    include_matcher: &PatternMatcher,
-    max_size_bytes: u64,
-) -> bool {
-    let path = entry.path();
-
-    // Quick exclusion check
-    if exclude_matcher.matches_path(path) {
-        return false;
-    }
-
-    // Quick inclusion check
-    if !include_matcher.matches_path(path) {
-        return false;
-    }
-
-    // Size and binary checks
-    if let Ok(metadata) = entry.metadata() {
-        if metadata.len() > max_size_bytes || metadata.len() == 0 {
-            return false;
-        }
-    } else {
-        return false;
-    }
-
-    true
-}
-
-// Function to check single file without using DirEntry::from_path
-fn should_include_single_file(
-    path: &Path,
-    exclude_matcher: &PatternMatcher,
-    include_matcher: &PatternMatcher,
-    max_size_bytes: u64,
-) -> bool {
-    // Quick exclusion check
-    if exclude_matcher.matches_path(path) {
-        return false;
-    }
-
-    // Quick inclusion check
-    if !include_matcher.matches_path(path) {
-        return false;
-    }
-
-    // Size and binary checks
-    if let Ok(metadata) = std::fs::metadata(path) {
-        if metadata.len() > max_size_bytes || metadata.len() == 0 {
-            return false;
-        }
-    } else {
-        return false;
-    }
-
-    true
-}
-
-async fn is_text_file(path: &Path) -> bool {
-    match fs::read(path).await {
-        Ok(content) => !is_binary_file(&content),
-        Err(_) => false,
-    }
-}
-
-#[instrument(skip(additional_excludes, additional_includes))]
-pub async fn get_files_recursively(
-    paths: &[PathBuf],
-    additional_excludes: &[String],
-    additional_includes: &[String],
-    ignore_comments: bool,
-    ignore_docstrings: bool,
-    max_size_mb: u64,
-) -> Result<Vec<PathBuf>> {
-    let max_size_bytes = max_size_mb * 1024 * 1024;
-
-    // Build optimized pattern matchers
-    let mut exclude_patterns: Vec<String> = DEFAULT_EXCLUDE_PATTERNS
-        .iter()
-        .map(|s| s.to_string())
-        .collect();
-    exclude_patterns.extend(additional_excludes.iter().cloned());
-
-    let include_patterns: Vec<String> = if additional_includes.is_empty() {
-        DEFAULT_INCLUDE_PATTERNS
+        // Should find Rust, Markdown, and TOML files but exclude target
+        let file_names: Vec<String> = files
             .iter()
-            .map(|s| s.to_string())
-            .collect()
-    } else {
-        additional_includes.to_vec()
-    };
+            .map(|p| p.file_name().unwrap().to_string_lossy().to_string())
+            .collect();
 
-    let exclude_matcher = PatternMatcher::new(&exclude_patterns);
-    let include_matcher = PatternMatcher::new(&include_patterns);
-
-    debug!("Using {} exclude patterns", exclude_patterns.len());
-    debug!("Using {} include patterns", include_patterns.len());
-
-    let mut all_files = Vec::new();
-
-    for path in paths {
-        if path.is_file() {
-            if should_include_single_file(path, &exclude_matcher, &include_matcher, max_size_bytes)
-                && is_text_file(path).await
-            {
-                all_files.push(path.clone());
-            }
-        } else if path.is_dir() {
-            // Use optimized directory traversal
-            for entry in WalkDir::new(path)
-                .into_iter()
-                .filter_entry(|e| {
-                    if e.path().is_dir() {
-                        !should_skip_directory(e, &exclude_matcher)
-                    } else {
-                        true
-                    }
-                })
-                .filter_map(|e| e.ok())
-            {
-                let entry_path = entry.path();
-
-                if entry_path.is_file()
-                    && should_include_file_fast(
-                        &entry,
-                        &exclude_matcher,
-                        &include_matcher,
-                        max_size_bytes,
-                    )
-                    && is_text_file(entry_path).await
-                {
-                    all_files.push(entry_path.to_path_buf());
-                }
-            }
-        }
+        assert!(file_names.contains(&"main.rs".to_string()));
+        assert!(file_names.contains(&"lib.rs".to_string()));
+        assert!(file_names.contains(&"README.md".to_string()));
+        assert!(file_names.contains(&"Cargo.toml".to_string()));
+        assert!(!file_names.contains(&"debug".to_string())); // Should be excluded
     }
 
-    info!("Found {} files after filtering", all_files.len());
-    Ok(all_files)
-}
+    #[tokio::test]
+    async fn test_get_files_recursively_with_exclusions() {
+        let temp_dir = TempDir::new().unwrap();
+        let temp_path = temp_dir.path();
 
-#[instrument(skip(files))]
-pub async fn concatenate_files(files: &[PathBuf], output_file: Option<&str>) -> Result<String> {
-    let mut result = String::new();
+        fs::write(temp_path.join("main.rs"), "fn main() {}")
+            .await
+            .unwrap();
+        fs::write(temp_path.join("test.log"), "log data")
+            .await
+            .unwrap();
+        fs::write(temp_path.join("data.json"), "{}").await.unwrap();
 
-    // Generate directory structure
-    result.push_str("# Project Structure\n\n");
-    result.push_str("```\n");
-    let structure = generate_directory_structure(files);
-    for line in structure {
-        result.push_str(&line);
-        result.push('\n');
-    }
-    result.push_str("```\n\n");
+        let files = get_files_recursively(
+            &[temp_path.to_path_buf()],
+            &["*.log".to_string(), "*.json".to_string()],
+            &[],
+            false,
+            false,
+            10,
+        )
+        .await
+        .unwrap();
 
-    // Add file contents
-    result.push_str("# File Contents\n\n");
+        let file_names: Vec<String> = files
+            .iter()
+            .map(|p| p.file_name().unwrap().to_string_lossy().to_string())
+            .collect();
 
-    let current_dir = std::env::current_dir().unwrap_or_default();
-
-    for file_path in files {
-        let relative_path = file_path.strip_prefix(&current_dir).unwrap_or(file_path);
-
-        result.push_str(&format!("## {}\n\n", relative_path.display()));
-
-        match fs::read_to_string(file_path).await {
-            Ok(content) => {
-                let language = get_language_from_extension(file_path);
-                let processed_content = remove_comments_and_docstrings(
-                    &content,
-                    language,
-                    ignore_comments,
-                    ignore_docstrings,
-                );
-
-                result.push_str(&format!("```{}\n", language));
-                result.push_str(&processed_content);
-                result.push_str("\n```\n\n");
-
-                debug!(
-                    "Added file: {} ({} chars)",
-                    relative_path.display(),
-                    processed_content.len()
-                );
-            }
-            Err(e) => {
-                warn!("Could not read file {}: {}", file_path.display(), e);
-                result.push_str(&format!("*Error reading file: {}*\n\n", e));
-            }
-        }
+        assert!(file_names.contains(&"main.rs".to_string()));
+        assert!(!file_names.contains(&"test.log".to_string()));
+        assert!(!file_names.contains(&"data.json".to_string()));
     }
 
-    if let Some(output_path) = output_file {
-        fs::write(output_path, &result).await?;
-        info!("Output written to: {}", output_path);
-        println!("Output written to: {}", output_path);
+    #[tokio::test]
+    async fn test_get_files_recursively_with_inclusions() {
+        let temp_dir = TempDir::new().unwrap();
+        let temp_path = temp_dir.path();
+
+        fs::write(temp_path.join("main.rs"), "fn main() {}")
+            .await
+            .unwrap();
+        fs::write(temp_path.join("script.py"), "print('hello')")
+            .await
+            .unwrap();
+        fs::write(temp_path.join("data.txt"), "text data")
+            .await
+            .unwrap();
+
+        let files = get_files_recursively(
+            &[temp_path.to_path_buf()],
+            &[],
+            &["*.rs".to_string()],
+            false,
+            false,
+            10,
+        )
+        .await
+        .unwrap();
+
+        let file_names: Vec<String> = files
+            .iter()
+            .map(|p| p.file_name().unwrap().to_string_lossy().to_string())
+            .collect();
+
+        assert!(file_names.contains(&"main.rs".to_string()));
+        assert!(!file_names.contains(&"script.py".to_string()));
+        assert!(!file_names.contains(&"data.txt".to_string()));
     }
 
-    Ok(result)
+    #[tokio::test]
+    async fn test_get_files_recursively_size_limit() {
+        let temp_dir = TempDir::new().unwrap();
+        let temp_path = temp_dir.path();
+
+        // Small file
+        fs::write(temp_path.join("small.rs"), "fn main() {}")
+            .await
+            .unwrap();
+
+        // Large file (2MB)
+        let large_content = "x".repeat(2 * 1024 * 1024);
+        fs::write(temp_path.join("large.rs"), &large_content)
+            .await
+            .unwrap();
+
+        let files = get_files_recursively(
+            &[temp_path.to_path_buf()],
+            &[],
+            &[],
+            false,
+            false,
+            1, // 1MB limit
+        )
+        .await
+        .unwrap();
+
+        let file_names: Vec<String> = files
+            .iter()
+            .map(|p| p.file_name().unwrap().to_string_lossy().to_string())
+            .collect();
+
+        assert!(file_names.contains(&"small.rs".to_string()));
+        assert!(!file_names.contains(&"large.rs".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_get_files_recursively_binary_exclusion() {
+        let temp_dir = TempDir::new().unwrap();
+        let temp_path = temp_dir.path();
+
+        // Text file
+        fs::write(temp_path.join("text.rs"), "fn main() {}")
+            .await
+            .unwrap();
+
+        // Binary file (with null bytes)
+        fs::write(temp_path.join("binary.dat"), &[0u8, 1u8, 2u8, 0u8])
+            .await
+            .unwrap();
+
+        let files = get_files_recursively(
+            &[temp_path.to_path_buf()],
+            &[],
+            &["*.rs".to_string(), "*.dat".to_string()], // Include both extensions
+            false,
+            false,
+            10,
+        )
+        .await
+        .unwrap();
+
+        let file_names: Vec<String> = files
+            .iter()
+            .map(|p| p.file_name().unwrap().to_string_lossy().to_string())
+            .collect();
+
+        assert!(file_names.contains(&"text.rs".to_string()));
+        assert!(!file_names.contains(&"binary.dat".to_string())); // Should be excluded as binary
+    }
+
+    #[tokio::test]
+    async fn test_concatenate_files() {
+        let temp_dir = TempDir::new().unwrap();
+        let temp_path = temp_dir.path();
+
+        let file1 = temp_path.join("main.rs");
+        let file2 = temp_path.join("lib.rs");
+
+        fs::write(&file1, "fn main() {\n    println!(\"Hello\");\n}")
+            .await
+            .unwrap();
+        fs::write(&file2, "pub fn helper() {\n    // Helper function\n}")
+            .await
+            .unwrap();
+
+        let files = vec![file1, file2];
+        let result = concatenate_files(&files, None, false, false).await.unwrap();
+
+        // Should contain project structure
+        assert!(result.contains("# Project Structure"));
+        assert!(result.contains("main.rs"));
+        assert!(result.contains("lib.rs"));
+
+        // Should contain file contents
+        assert!(result.contains("# File Contents"));
+        assert!(result.contains("fn main()"));
+        assert!(result.contains("pub fn helper()"));
+        assert!(result.contains("println!"));
+
+        // Should have proper code formatting
+        assert!(result.contains("```rust"));
+    }
+
+    #[tokio::test]
+    async fn test_concatenate_files_with_output() {
+        let temp_dir = TempDir::new().unwrap();
+        let temp_path = temp_dir.path();
+
+        let source_file = temp_path.join("main.rs");
+        let output_file = temp_path.join("output.md");
+
+        fs::write(&source_file, "fn main() {}").await.unwrap();
+
+        let files = vec![source_file];
+        concatenate_files(&files, Some(output_file.to_str().unwrap()), false, false)
+            .await
+            .unwrap();
+
+        // Output file should exist and contain the content
+        assert!(output_file.exists());
+        let content = fs::read_to_string(&output_file).await.unwrap();
+        assert!(content.contains("# Project Structure"));
+        assert!(content.contains("fn main()"));
+    }
+
+    #[tokio::test]
+    async fn test_concatenate_files_with_comment_removal() {
+        let temp_dir = TempDir::new().unwrap();
+        let temp_path = temp_dir.path();
+
+        let rust_file = temp_path.join("main.rs");
+        fs::write(
+            &rust_file,
+            "// Comment\nfn main() {\n    /* Block */\n    println!(\"test\");\n}",
+        )
+        .await
+        .unwrap();
+
+        let files = vec![rust_file];
+        let result = concatenate_files(&files, None, true, false).await.unwrap();
+
+        assert!(!result.contains("// Comment"));
+        assert!(!result.contains("/* Block */"));
+        assert!(result.contains("fn main()"));
+        assert!(result.contains("println!"));
+    }
+
+    #[tokio::test]
+    async fn test_concatenate_files_unreadable_file() {
+        let temp_dir = TempDir::new().unwrap();
+        let temp_path = temp_dir.path();
+
+        let good_file = temp_path.join("good.rs");
+        let bad_file = temp_path.join("nonexistent.rs");
+
+        fs::write(&good_file, "fn main() {}").await.unwrap();
+        // bad_file doesn't exist
+
+        let files = vec![good_file, bad_file];
+        let result = concatenate_files(&files, None, false, false).await.unwrap();
+
+        // Should contain good file
+        assert!(result.contains("fn main()"));
+
+        // Should contain error message for bad file
+        assert!(result.contains("Error reading file"));
+    }
 }

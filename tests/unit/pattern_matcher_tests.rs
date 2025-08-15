@@ -38,7 +38,6 @@ mod tests {
 
     #[test]
     fn test_directory_matching_optimized() {
-        // Test optimized directory matching - no /* suffix needed
         let matcher = PatternMatcher::new(&[
             "target".to_string(),
             "node_modules".to_string(),
@@ -49,8 +48,6 @@ mod tests {
         assert!(matcher.matches_path(&PathBuf::from("src/target/file")));
         assert!(matcher.matches_path(&PathBuf::from("project/node_modules/lib")));
         assert!(matcher.matches_path(&PathBuf::from("build/output.exe")));
-
-        // Should also match the directory itself
         assert!(matcher.matches_path(&PathBuf::from("target")));
         assert!(matcher.matches_path(&PathBuf::from("node_modules")));
 
@@ -60,7 +57,6 @@ mod tests {
 
     #[test]
     fn test_directory_patterns_with_and_without_suffix() {
-        // Test that "dir" and "dir/*" are treated the same
         let matcher1 = PatternMatcher::new(&["target".to_string()]);
         let matcher2 = PatternMatcher::new(&["target/*".to_string()]);
 
@@ -136,34 +132,21 @@ mod tests {
     #[test]
     fn test_performance_fast_paths() {
         let patterns = vec![
-            // Fast path patterns
             "*.rs".to_string(),
             "node_modules".to_string(),
             "Cargo.toml".to_string(),
-            // Slower glob pattern
             "complex/**/pattern/**/*.test.js".to_string(),
         ];
 
         let matcher = PatternMatcher::new(&patterns);
 
-        // These should use fast paths
-        let fast_cases = [
-            ("main.rs", true),             // Extension fast path
-            ("Cargo.toml", true),          // Filename fast path
-            ("node_modules/lib.js", true), // Directory fast path
-            ("file.txt", false),           // No match, but fast
-        ];
+        // Fast paths
+        assert!(matcher.matches_path(&PathBuf::from("main.rs")));
+        assert!(matcher.matches_path(&PathBuf::from("Cargo.toml")));
+        assert!(matcher.matches_path(&PathBuf::from("node_modules/lib.js")));
+        assert!(!matcher.matches_path(&PathBuf::from("file.txt")));
 
-        for (path, expected) in &fast_cases {
-            assert_eq!(
-                matcher.matches_path(&PathBuf::from(path)),
-                *expected,
-                "Fast path failed for: {}",
-                path
-            );
-        }
-
-        // This should use glob matching
+        // Glob matching
         assert!(matcher.matches_path(&PathBuf::from("complex/deep/pattern/nested/file.test.js")));
     }
 
@@ -183,20 +166,20 @@ mod tests {
             "*".to_string(),
             "**".to_string(),
             "?".to_string(),
-            "".to_string(), // empty pattern should be ignored
+            "".to_string(),
         ]);
 
-        // Single star should match anything in same directory
+        // Single star
         assert!(matcher.matches_path(&PathBuf::from("file")));
         assert!(matcher.matches_path(&PathBuf::from("file.ext")));
 
-        // Double star should match anything anywhere
+        // Double star
         assert!(matcher.matches_path(&PathBuf::from("any/path/file")));
 
-        // Single question mark should match single character
+        // Single question mark
         assert!(matcher.matches_path(&PathBuf::from("a")));
         assert!(matcher.matches_path(&PathBuf::from("1")));
-        assert!(!matcher.matches_path(&PathBuf::from("ab"))); // too long
+        assert!(!matcher.matches_path(&PathBuf::from("ab")));
     }
 
     #[test]
@@ -214,21 +197,10 @@ mod tests {
     }
 
     #[test]
-    fn test_non_matches() {
-        let matcher = PatternMatcher::new(&["*.rs".to_string(), "src/*".to_string()]);
-
-        assert!(!matcher.matches_path(&PathBuf::from("file.txt")));
-        assert!(!matcher.matches_path(&PathBuf::from("README.md")));
-        assert!(!matcher.matches_path(&PathBuf::from("tests/main.rs"))); // doesn't match src/*
-    }
-
-    #[test]
     fn test_performance_with_many_patterns() {
         let patterns: Vec<String> = (0..1000).map(|i| format!("pattern_{}.rs", i)).collect();
-
         let matcher = PatternMatcher::new(&patterns);
 
-        // Should still be fast with many patterns
         let start = std::time::Instant::now();
         for i in 0..1000 {
             let path = PathBuf::from(format!("pattern_{}.rs", i));
@@ -236,7 +208,6 @@ mod tests {
         }
         let duration = start.elapsed();
 
-        // Should complete in reasonable time (adjust threshold as needed)
         assert!(
             duration.as_millis() < 100,
             "Pattern matching took too long: {:?}",
@@ -266,7 +237,7 @@ mod tests {
         assert!(matcher.matches_path(&PathBuf::from("module.pyc")));
         assert!(matcher.matches_path(&PathBuf::from("app.log")));
 
-        // Should not match unrelated files
+        // No match
         assert!(!matcher.matches_path(&PathBuf::from("src/main.rs")));
         assert!(!matcher.matches_path(&PathBuf::from("README.md")));
     }

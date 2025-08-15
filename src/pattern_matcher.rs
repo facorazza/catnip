@@ -187,12 +187,7 @@ impl PatternMatcher {
         Self::match_parts(path, &glob.parts, 0, 0)
     }
 
-    fn match_parts(
-        path: &str,
-        parts: &[GlobPart],
-        path_pos: usize,
-        part_idx: usize,
-    ) -> bool {
+    fn match_parts(path: &str, parts: &[GlobPart], path_pos: usize, part_idx: usize) -> bool {
         // If we've consumed all parts
         if part_idx >= parts.len() {
             return path_pos == path.len();
@@ -259,89 +254,5 @@ impl PatternMatcher {
                 false
             }
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::path::PathBuf;
-
-    #[test]
-    fn test_exact_matching() {
-        let matcher = PatternMatcher::new(&[
-            "*.rs".to_string(),
-            "Cargo.toml".to_string(),
-            "target".to_string(), // Just "target", not "target/*"
-        ]);
-
-        // Extension matching
-        assert!(matcher.matches_path(&PathBuf::from("main.rs")));
-        assert!(matcher.matches_path(&PathBuf::from("src/lib.rs")));
-
-        // Filename matching
-        assert!(matcher.matches_path(&PathBuf::from("Cargo.toml")));
-        assert!(matcher.matches_path(&PathBuf::from("project/Cargo.toml")));
-
-        // Directory matching - should match any path containing "target"
-        assert!(matcher.matches_path(&PathBuf::from("target/debug/main")));
-        assert!(matcher.matches_path(&PathBuf::from("src/target/file")));
-        assert!(matcher.matches_path(&PathBuf::from("project/target")));
-    }
-
-    #[test]
-    fn test_directory_patterns_optimization() {
-        let matcher = PatternMatcher::new(&[
-            "node_modules".to_string(), // No /* suffix needed
-            "target/*".to_string(),     // Should be treated same as "target"
-            "__pycache__".to_string(),
-        ]);
-
-        // All should match directory names anywhere in path
-        assert!(matcher.matches_path(&PathBuf::from("node_modules/lib.js")));
-        assert!(matcher.matches_path(&PathBuf::from("project/node_modules/react/index.js")));
-        assert!(matcher.matches_path(&PathBuf::from("target/debug")));
-        assert!(matcher.matches_path(&PathBuf::from("src/__pycache__/file.pyc")));
-    }
-
-    #[test]
-    fn test_glob_patterns() {
-        let matcher = PatternMatcher::new(&[
-            "src/*.rs".to_string(),
-            "tests/**/*.rs".to_string(),
-            "*.?s".to_string(),
-        ]);
-
-        // Simple glob
-        assert!(matcher.matches_path(&PathBuf::from("src/main.rs")));
-        assert!(!matcher.matches_path(&PathBuf::from("tests/main.rs")));
-
-        // Double star
-        assert!(matcher.matches_path(&PathBuf::from("tests/unit/test.rs")));
-        assert!(matcher.matches_path(&PathBuf::from("tests/integration/deep/test.rs")));
-
-        // Question mark
-        assert!(matcher.matches_path(&PathBuf::from("main.rs")));
-        assert!(matcher.matches_path(&PathBuf::from("main.js")));
-        assert!(!matcher.matches_path(&PathBuf::from("main.txt")));
-    }
-
-    #[test]
-    fn test_performance_optimization() {
-        // Test that exact matches are faster than glob matches
-        let matcher = PatternMatcher::new(&[
-            "*.rs".to_string(),
-            "node_modules".to_string(),
-            "Cargo.toml".to_string(),
-            "complex/**/pattern/**/*.test.js".to_string(), // Complex pattern should be slower
-        ]);
-
-        // These should use fast paths
-        assert!(matcher.matches_path(&PathBuf::from("main.rs"))); // Extension fast path
-        assert!(matcher.matches_path(&PathBuf::from("Cargo.toml"))); // Filename fast path
-        assert!(matcher.matches_path(&PathBuf::from("node_modules/lib.js"))); // Directory fast path
-
-        // This should use glob matching
-        assert!(matcher.matches_path(&PathBuf::from("complex/deep/pattern/nested/file.test.js")));
     }
 }

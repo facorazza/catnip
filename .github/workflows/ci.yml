@@ -17,21 +17,15 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  test:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-
+  lint:
+    runs-on: ubuntu-latest
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-
     - name: Install Rust
       uses: dtolnay/rust-toolchain@stable
       with:
         components: rustfmt, clippy
-
     - name: Cache dependencies
       uses: actions/cache@v3
       with:
@@ -40,34 +34,46 @@ jobs:
           ~/.cargo/git
           target
         key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+    - name: Check formatting
+      run: cargo fmt --all -- --check
+    - name: Run clippy
+      run: cargo clippy --all-targets --all-features
 
+  test:
+    needs: lint
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+    - name: Cache dependencies
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
     - name: Install system dependencies (Linux)
       if: runner.os == 'Linux'
       run: |
         sudo apt-get update
         sudo apt-get install -y xclip wl-clipboard
-
-    - name: Check formatting
-      run: cargo fmt --all -- --check
-
-    - name: Run clippy
-      run: cargo clippy --all-targets --all-features
-
     - name: Build
       run: cargo build --verbose
-
     - name: Run tests
       run: cargo test --verbose
-
     - name: Run tests with all features
       run: cargo test --all-features --verbose
-
     - name: Generate coverage (Linux only)
       if: matrix.os == 'ubuntu-latest'
       run: |
         cargo install cargo-tarpaulin
         cargo tarpaulin --verbose --all-features --workspace --timeout 120 --out xml
-
     - name: Upload coverage to Codecov
       if: matrix.os == 'ubuntu-latest'
       uses: codecov/codecov-action@v3

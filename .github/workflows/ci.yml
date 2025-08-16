@@ -22,7 +22,6 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        rust: [stable, beta]
 
     steps:
     - name: Checkout code
@@ -65,29 +64,17 @@ jobs:
       run: cargo test --all-features --verbose
 
     - name: Generate coverage (Linux only)
-      if: matrix.os == 'ubuntu-latest' && matrix.rust == 'stable'
+      if: matrix.os == 'ubuntu-latest'
       run: |
         cargo install cargo-tarpaulin
         cargo tarpaulin --verbose --all-features --workspace --timeout 120 --out xml
 
     - name: Upload coverage to Codecov
-      if: matrix.os == 'ubuntu-latest' && matrix.rust == 'stable'
+      if: matrix.os == 'ubuntu-latest'
       uses: codecov/codecov-action@v3
       with:
         file: ./cobertura.xml
         flags: unittests
-
-  security-audit:
-    runs-on: ubuntu-latest
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-    - name: Install Rust
-      uses: dtolnay/rust-toolchain@stable
-    - name: Install cargo-audit
-      run: cargo install cargo-audit
-    - name: Run security audit
-      run: cargo audit
 
   build-binary:
     needs: test

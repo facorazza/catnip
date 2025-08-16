@@ -1,0 +1,20 @@
+[package]
+name = "catnip"
+version = "0.2.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.99"
+clap = { version = "4.5.45", features = ["derive"] }
+copypasta = "0.10.2"
+regex = "1.11"
+rustls = "0.23.31"
+tracing = "0.1.41"
+tracing-subscriber = { version = "0.3.19", features = ["env-filter", "fmt"] }
+tokio = { version = "1.47", features = ["full"] }
+walkdir = "2.5"
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = "1.0.142"
+
+[dev-dependencies]
+tempfile = "3.20"

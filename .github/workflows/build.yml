@@ -41,7 +41,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [ubuntu-24.04, macos-15, windows-2025]
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -86,23 +86,23 @@ jobs:
     strategy:
       matrix:
         include:
-        - os: ubuntu-latest
+        - os: ubuntu-24.04
           target: x86_64-unknown-linux-gnu
           artifact_name: catnip
           asset_name: catnip-linux-x86_64
-        - os: ubuntu-latest-arm
+        - os: ubuntu-24.04-arm
           target: aarch64-unknown-linux-gnu
           artifact_name: catnip
           asset_name: catnip-linux-aarch64
-        - os: macos-latest
+        - os: macos-15
           target: x86_64-apple-darwin
           artifact_name: catnip
           asset_name: catnip-macos-x86_64
-        - os: macos-latest
+        - os: macos-15
           target: aarch64-apple-darwin
           artifact_name: catnip
           asset_name: catnip-macos-aarch64
-        - os: windows-latest
+        - os: windows-2025
           target: x86_64-pc-windows-msvc
           artifact_name: catnip.exe
           asset_name: catnip-windows-x86_64.exe

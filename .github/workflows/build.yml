@@ -1,4 +1,4 @@
-name: Rust CI/CD
+name: Lint, test and build
 
 on:
   push:

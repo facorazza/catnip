@@ -89,10 +89,9 @@ jobs:
     - name: Run security audit
       run: cargo audit
 
-  build-release:
+  build-binary:
     needs: test
     runs-on: ${{ matrix.os }}
-    if: github.event_name == 'release'
     strategy:
       matrix:
         include:

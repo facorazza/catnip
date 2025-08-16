@@ -22,7 +22,7 @@ struct Args {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Concatenate files with directory structure and content
+    /// Concatenate files content with directory structure
     Cat {
         /// Paths to process
         paths: Vec<PathBuf>,
@@ -31,7 +31,7 @@ enum Commands {
         #[arg(short, long)]
         output: Option<String>,
 
-        /// Don't copy to clipboard (clipboard is default behavior)
+        /// Don't copy to clipboard
         #[arg(long)]
         no_copy: bool,
 
@@ -54,7 +54,7 @@ enum Commands {
         /// Maximum file size in MB (default: 10MB)
         #[arg(long, default_value = "10")]
         max_size_mb: u64,
-        /// Include prompt instructions from codebase_prompt.md
+        /// Include prompt instructions
         #[arg(long)]
         include_prompt: bool,
     },

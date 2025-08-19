@@ -1,5 +1,6 @@
 pub mod clipboard;
 pub mod file_processor;
+pub mod patch;
 pub mod pattern_matcher;
 pub mod patterns;
 pub mod prompt;

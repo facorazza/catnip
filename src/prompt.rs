@@ -83,16 +83,6 @@ You MUST respond with a single JSON object in this exact format:
 3. Save JSON to file or pipe to: `catnip patch -`
 4. Run: `catnip patch <json-file>` to apply updates
 
-## Common Update Types
-
-- "Add error handling to function X"
-- "Replace all println! with tracing::info!"
-- "Add #[derive(Debug)] to struct Y"
-- "Update function signature to return Result<T>"
-- "Add validation to input parameters"
-- "Replace unwrap() calls with proper error handling"
-- "Add new field to struct and update constructor"
-
 ## What NOT to do
 
 - Don't wrap JSON in markdown code blocks

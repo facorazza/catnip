@@ -55,8 +55,8 @@ enum Commands {
         #[arg(long, default_value = "10")]
         max_size_mb: u64,
         /// Include prompt instructions
-        #[arg(long)]
-        include_prompt: bool,
+        #[arg(short = 'p', long = "prompt")]
+        prompt: bool,
     },
     /// Apply JSON-formatted code updates to files
     Patch {
@@ -113,7 +113,7 @@ async fn main() -> Result<()> {
             include,
             ignore_comments,
             ignore_docstrings,
-            include_prompt,
+            prompt,
             max_size_mb,
         } => {
             execute_cat(
@@ -124,7 +124,7 @@ async fn main() -> Result<()> {
                 include,
                 ignore_comments,
                 ignore_docstrings,
-                include_prompt,
+                prompt,
                 max_size_mb,
             )
             .await?;
@@ -150,7 +150,7 @@ async fn execute_cat(
     include: Vec<String>,
     ignore_comments: bool,
     ignore_docstrings: bool,
-    include_prompt: bool,
+    prompt: bool,
     max_size_mb: u64,
 ) -> Result<()> {
     if paths.is_empty() {
@@ -179,7 +179,7 @@ async fn execute_cat(
     .await?;
 
     // Add prompt instructions if requested
-    if include_prompt {
+    if prompt {
         result = format!("{}\n{}", result, prompt::PROMPT);
         info!("Added prompt instructions from constant");
     }

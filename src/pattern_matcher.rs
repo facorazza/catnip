@@ -15,7 +15,6 @@ pub struct PatternMatcher {
 
 #[derive(Debug)]
 struct GlobPattern {
-    pattern: String,
     parts: Vec<GlobPart>,
 }
 
@@ -134,10 +133,7 @@ impl PatternMatcher {
             parts.push(GlobPart::Literal(current_literal));
         }
 
-        GlobPattern {
-            pattern: pattern.to_string(),
-            parts,
-        }
+        GlobPattern { parts }
     }
 
     #[instrument(skip(self))]
@@ -147,13 +143,13 @@ impl PatternMatcher {
             .map(|n| n.to_string_lossy())
             .unwrap_or_default();
 
-        // Fast exact filename check
+        // Exact filename check
         if self.exact_filenames.contains(filename.as_ref()) {
             debug!("Exact filename match: {}", filename);
             return true;
         }
 
-        // Fast extension check
+        // Exact extension check
         if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
             if self.exact_extensions.contains(ext) {
                 debug!("Extension match: .{}", ext);
@@ -161,7 +157,7 @@ impl PatternMatcher {
             }
         }
 
-        // Fast directory check - check if any path component matches
+        // Exact directory check - check if any path component matches
         for component in path.components() {
             if let Some(dir_name) = component.as_os_str().to_str() {
                 if self.exact_directories.contains(dir_name) {

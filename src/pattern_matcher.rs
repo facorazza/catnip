@@ -173,14 +173,9 @@ impl PatternMatcher {
 
         // Glob pattern matching (only if no fast matches)
         let path_str = path.to_string_lossy();
-        for glob in &self.glob_patterns {
-            if Self::matches_glob(&path_str, glob) {
-                debug!("Glob match: {} -> {}", glob.pattern, path_str);
-                return true;
-            }
-        }
-
-        false
+        self.glob_patterns
+            .iter()
+            .any(|glob| Self::matches_glob(&path_str, glob))
     }
 
     fn matches_glob(path: &str, glob: &GlobPattern) -> bool {

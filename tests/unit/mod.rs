@@ -1,3 +1,4 @@
+pub mod clipboard_tests;
 pub mod file_processor_tests;
 pub mod pattern_matcher_tests;
 pub mod patterns_tests;

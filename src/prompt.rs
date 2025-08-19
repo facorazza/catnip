@@ -15,13 +15,9 @@ You MUST respond with a single JSON object in this exact format:
       "path": "relative/path/to/file.rs",
       "updates": [
         {
-          "pattern": "fn old_function\\(.*?\\) \\{[^}]+\\}",
-          "replacement": "fn new_function(param: &str) {\n    println!(\"Updated: {}\", param);\n}",
-          "case_insensitive": false,
-          "multiline": true,
-          "dot_matches_newline": true,
-          "max_replacements": null,
-          "description": "Replace old_function with improved version"
+          "old_content": "exact code to be replaced",
+          "new_content": "exact replacement code",
+          "description": "Optional description of what this update does"
         }
       ]
     }
@@ -32,47 +28,77 @@ You MUST respond with a single JSON object in this exact format:
 ## Critical Rules
 
 1. **JSON ONLY**: Your entire response must be valid JSON. No markdown code blocks, no explanations outside the JSON.
-2. **Regex Patterns**: Use regex patterns to match code sections. Be specific enough to avoid unintended matches.
-3. **Escape Characters**: Properly escape regex special characters (\\, ", etc.) in JSON.
-4. **Test Patterns**: Ensure your regex patterns would match the intended code sections.
-5. **Relative Paths**: Use paths relative to the project root (starting with `src/` for this Rust project).
+2. **Exact Matching**: Use exact string matching - copy the exact code you want to replace as `old_content`.
+3. **Escape Characters**: Properly escape JSON strings (\\, ", \n, \t, etc.).
+4. **Relative Paths**: Use paths relative to the project root (starting with `src/` for this Rust project).
+5. **Complete Sections**: Include complete functions, structs, or logical code blocks in your replacements.
 
-## Regex Options
+## How It Works
 
-- `case_insensitive`: Set to true for case-insensitive matching
-- `multiline`: Set to true when matching across multiple lines
-- `dot_matches_newline`: Set to true to allow . to match newlines
-- `max_replacements`: Limit number of replacements (null = replace all)
-- `description`: Human-readable description of what the update does
+- The tool will find each `old_content` string in the specified file
+- It will replace it exactly with `new_content`
+- If `old_content` is not found, the update will fail
+- If `old_content` appears multiple times, all occurrences will be replaced
 
-## Pattern Examples
+## Best Practices
 
-- Simple text: `"old_variable_name"`
-- Function: `"fn function_name\\([^)]*\\) \\{[^}]+\\}"`
-- Struct: `"struct StructName \\{[^}]+\\}"`
-- Import: `"use [^;]+;"`
-- Comment block: `"/\\*[^*]*\\*+(?:[^/*][^*]*\\*+)*/"`
-- Multiple lines: Use multiline=true and dot_matches_newline=true
+- **Be Specific**: Copy complete functions, methods, or code blocks rather than fragments
+- **Include Context**: Include enough surrounding code to make matches unique
+- **Test Carefully**: Make sure your `old_content` exactly matches what's in the file
+- **One Change Per Update**: Don't try to combine unrelated changes in a single update
 
-## Usage
+## Example Updates
 
-1. First run: `codetools cat <paths>` to get the codebase
-2. Ask for updates and get JSON response
-3. Run: `codetools patch <json-file>` to apply updates
+**Adding error handling:**
+```json
+{
+  "old_content": "let content = fs::read_to_string(path).unwrap();",
+  "new_content": "let content = fs::read_to_string(path)\n    .with_context(|| format!(\"Failed to read file: {}\", path.display()))?;",
+  "description": "Add proper error handling with context"
+}
+```
 
-## Example Commands
+**Replacing a complete function:**
+```json
+{
+  "old_content": "fn process_data(input: &str) -> String {\n    input.to_uppercase()\n}",
+  "new_content": "fn process_data(input: &str) -> Result<String> {\n    if input.is_empty() {\n        return Err(anyhow!(\"Input cannot be empty\"));\n    }\n    Ok(input.to_uppercase())\n}",
+  "description": "Add validation and error handling to process_data"
+}
+```
 
-- "Add error handling to the file processing function"
-- "Replace all println! with tracing::info! for better logging"
-- "Update struct fields to use Option types"
-- "Add #[derive(Debug)] to all structs"
+**Updating struct fields:**
+```json
+{
+  "old_content": "struct Config {\n    name: String,\n    enabled: bool,\n}",
+  "new_content": "struct Config {\n    name: String,\n    enabled: bool,\n    timeout: Option<u64>,\n}",
+  "description": "Add optional timeout field to Config struct"
+}
+```
+
+## Usage Workflow
+
+1. Run: `catnip cat <paths>` to get the codebase
+2. Ask for specific updates and get JSON response
+3. Save JSON to file or pipe to: `catnip patch -`
+4. Run: `catnip patch <json-file>` to apply updates
+
+## Common Update Types
+
+- "Add error handling to function X"
+- "Replace all println! with tracing::info!"
+- "Add #[derive(Debug)] to struct Y"
+- "Update function signature to return Result<T>"
+- "Add validation to input parameters"
 - "Replace unwrap() calls with proper error handling"
+- "Add new field to struct and update constructor"
 
 ## What NOT to do
 
 - Don't wrap JSON in markdown code blocks
 - Don't add explanations before or after the JSON
-- Don't use overly broad regex patterns that might match unintended code
-- Don't forget to escape regex special characters in JSON strings
+- Don't use partial code snippets that might match unintended locations
+- Don't forget to escape JSON special characters
 - Don't modify files that weren't provided in the codebase
+- Don't make multiple unrelated changes in one update object
 "#;

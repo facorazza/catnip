@@ -1,5 +1,7 @@
 # catnip 🛠️📋
 
+[![Lint, test and build](https://github.com/facorazza/catnip/actions/workflows/build.yml/badge.svg)](https://github.com/facorazza/catnip/actions/workflows/build.yml)
+
 **Rapid Project File Concatenation and Code Patching for LLM Analysis**
 
 ## Overview

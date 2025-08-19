@@ -22,7 +22,7 @@ struct Args {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Concatenate files with directory structure and content
+    /// Concatenate files content with directory structure
     Cat {
         /// Paths to process
         paths: Vec<PathBuf>,
@@ -31,7 +31,7 @@ enum Commands {
         #[arg(short, long)]
         output: Option<String>,
 
-        /// Don't copy to clipboard (clipboard is default behavior)
+        /// Don't copy to clipboard
         #[arg(long)]
         no_copy: bool,
 
@@ -54,9 +54,9 @@ enum Commands {
         /// Maximum file size in MB (default: 10MB)
         #[arg(long, default_value = "10")]
         max_size_mb: u64,
-        /// Include prompt instructions from codebase_prompt.md
-        #[arg(long)]
-        include_prompt: bool,
+        /// Include prompt instructions
+        #[arg(short = 'p', long = "prompt")]
+        prompt: bool,
     },
     /// Apply JSON-formatted code updates to files
     Patch {
@@ -82,15 +82,15 @@ struct UpdateRequest {
 #[derive(Debug, Deserialize, Serialize)]
 struct FileUpdate {
     path: String,
-    updates: Vec<LineUpdate>,
+    updates: Vec<CodeUpdate>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-struct LineUpdate {
-    line_start: usize,
-    line_end: usize,
+struct CodeUpdate {
     old_content: String,
     new_content: String,
+    #[serde(default)]
+    description: Option<String>,
 }
 
 #[tokio::main]
@@ -113,7 +113,7 @@ async fn main() -> Result<()> {
             include,
             ignore_comments,
             ignore_docstrings,
-            include_prompt,
+            prompt,
             max_size_mb,
         } => {
             execute_cat(
@@ -124,7 +124,7 @@ async fn main() -> Result<()> {
                 include,
                 ignore_comments,
                 ignore_docstrings,
-                include_prompt,
+                prompt,
                 max_size_mb,
             )
             .await?;
@@ -150,7 +150,7 @@ async fn execute_cat(
     include: Vec<String>,
     ignore_comments: bool,
     ignore_docstrings: bool,
-    include_prompt: bool,
+    prompt: bool,
     max_size_mb: u64,
 ) -> Result<()> {
     if paths.is_empty() {
@@ -179,7 +179,7 @@ async fn execute_cat(
     .await?;
 
     // Add prompt instructions if requested
-    if include_prompt {
+    if prompt {
         result = format!("{}\n{}", result, prompt::PROMPT);
         info!("Added prompt instructions from constant");
     }
@@ -265,29 +265,36 @@ async fn process_file_update(
     let original_content = fs::read_to_string(&file_path)
         .with_context(|| format!("Failed to read file: {}", file_path.display()))?;
 
-    let mut lines: Vec<String> = original_content.lines().map(|s| s.to_string()).collect();
-
-    // Sort updates by line number in reverse order to avoid offset issues
-    let mut sorted_updates = file_update.updates.clone();
-    sorted_updates.sort_by(|a, b| b.line_start.cmp(&a.line_start));
-
+    let mut updated_content = original_content.clone();
     let mut applied_updates = 0;
 
-    for update in &sorted_updates {
+    // Apply updates in order
+    for (i, update) in file_update.updates.iter().enumerate() {
         debug!(
-            "Applying update: lines {}-{}",
-            update.line_start, update.line_end
+            "Applying update {}/{}: {}",
+            i + 1,
+            file_update.updates.len(),
+            update.description.as_deref().unwrap_or("no description")
         );
 
-        if let Err(e) = validate_and_apply_update(&mut lines, update) {
+        if !updated_content.contains(&update.old_content) {
             return Err(anyhow::anyhow!(
-                "Failed to apply update at lines {}-{}: {}",
-                update.line_start,
-                update.line_end,
-                e
+                "Old content not found in file. Expected content:\n{}",
+                update.old_content
             ));
         }
 
+        // Count occurrences to ensure we're not making ambiguous replacements
+        let occurrences = updated_content.matches(&update.old_content).count();
+        if occurrences > 1 {
+            warn!(
+                "Old content appears {} times in file, replacing all occurrences",
+                occurrences
+            );
+        }
+
+        // Replace the old content with new content
+        updated_content = updated_content.replace(&update.old_content, &update.new_content);
         applied_updates += 1;
     }
 
@@ -299,10 +306,14 @@ async fn process_file_update(
         );
 
         // Show preview of changes
-        for update in &file_update.updates {
-            println!("\n--- Lines {}-{} ---", update.line_start, update.line_end);
-            println!("- {}", update.old_content.replace('\n', "\n- "));
-            println!("+ {}", update.new_content.replace('\n', "\n+ "));
+        println!("\n--- File: {} ---", file_path.display());
+        for (i, update) in file_update.updates.iter().enumerate() {
+            println!("\n--- Update {} ---", i + 1);
+            if let Some(desc) = &update.description {
+                println!("Description: {}", desc);
+            }
+            println!("- OLD:\n{}", update.old_content);
+            println!("+ NEW:\n{}", update.new_content);
         }
 
         return Ok(applied_updates);
@@ -317,73 +328,10 @@ async fn process_file_update(
     }
 
     // Write updated content
-    let new_content = lines.join("\n");
-    fs::write(&file_path, &new_content)
+    fs::write(&file_path, &updated_content)
         .with_context(|| format!("Failed to write updated file: {}", file_path.display()))?;
 
     Ok(applied_updates)
-}
-
-fn validate_and_apply_update(lines: &mut Vec<String>, update: &LineUpdate) -> Result<()> {
-    // Convert to 0-based indexing
-    let start_idx = update.line_start.saturating_sub(1);
-    let end_idx = update.line_end.saturating_sub(1);
-
-    if start_idx >= lines.len() {
-        return Err(anyhow::anyhow!(
-            "Start line {} is beyond file length {}",
-            update.line_start,
-            lines.len()
-        ));
-    }
-
-    if end_idx >= lines.len() {
-        return Err(anyhow::anyhow!(
-            "End line {} is beyond file length {}",
-            update.line_end,
-            lines.len()
-        ));
-    }
-
-    if start_idx > end_idx {
-        return Err(anyhow::anyhow!(
-            "Start line {} is after end line {}",
-            update.line_start,
-            update.line_end
-        ));
-    }
-
-    // Extract current content for the specified lines
-    let current_content = lines[start_idx..=end_idx].join("\n");
-
-    // Normalize line endings for comparison
-    let normalized_current = current_content.replace("\r\n", "\n");
-    let normalized_expected = update.old_content.replace("\r\n", "\n");
-
-    if normalized_current != normalized_expected {
-        warn!(
-            "Content mismatch at lines {}-{}",
-            update.line_start, update.line_end
-        );
-        debug!("Expected:\n{}", normalized_expected);
-        debug!("Found:\n{}", normalized_current);
-
-        return Err(anyhow::anyhow!(
-            "Content mismatch - the old_content doesn't match the current file content"
-        ));
-    }
-
-    // Apply the update
-    let new_lines: Vec<String> = update.new_content.lines().map(|s| s.to_string()).collect();
-
-    // Replace the range with new content
-    lines.splice(start_idx..=end_idx, new_lines);
-
-    debug!(
-        "Successfully applied update at lines {}-{}",
-        update.line_start, update.line_end
-    );
-    Ok(())
 }
 
 // Clipboard functionality

@@ -145,39 +145,8 @@ fn should_skip_directory(entry: &DirEntry, exclude_matcher: &PatternMatcher) -> 
     exclude_matcher.matches_path(path)
 }
 
-// Optimized file filter function
-fn should_include_file_fast(
-    entry: &DirEntry,
-    exclude_matcher: &PatternMatcher,
-    include_matcher: &PatternMatcher,
-    max_size_bytes: u64,
-) -> bool {
-    let path = entry.path();
-
-    // Quick exclusion check
-    if exclude_matcher.matches_path(path) {
-        return false;
-    }
-
-    // Quick inclusion check
-    if !include_matcher.matches_path(path) {
-        return false;
-    }
-
-    // Size and binary checks
-    if let Ok(metadata) = entry.metadata() {
-        if metadata.len() > max_size_bytes || metadata.len() == 0 {
-            return false;
-        }
-    } else {
-        return false;
-    }
-
-    true
-}
-
-// Function to check single file without using DirEntry::from_path
-fn should_include_single_file(
+// Unified file filter function
+fn should_include_file(
     path: &Path,
     exclude_matcher: &PatternMatcher,
     include_matcher: &PatternMatcher,
@@ -195,14 +164,10 @@ fn should_include_single_file(
 
     // Size and binary checks
     if let Ok(metadata) = std::fs::metadata(path) {
-        if metadata.len() > max_size_bytes || metadata.len() == 0 {
-            return false;
-        }
+        metadata.len() <= max_size_bytes && metadata.len() > 0
     } else {
-        return false;
+        false
     }
-
-    true
 }
 
 async fn is_text_file(path: &Path) -> bool {
@@ -223,12 +188,10 @@ pub async fn get_files_recursively(
 ) -> Result<Vec<PathBuf>> {
     let max_size_bytes = max_size_mb * 1024 * 1024;
 
-    // Build optimized pattern matchers
-    let mut exclude_patterns: Vec<String> = DEFAULT_EXCLUDE_PATTERNS
-        .iter()
-        .map(|s| s.to_string())
-        .collect();
-    exclude_patterns.extend(additional_excludes.iter().cloned());
+    // Build pattern matchers
+    let mut exclude_patterns = DEFAULT_EXCLUDE_PATTERNS.to_vec();
+    exclude_patterns.extend(additional_excludes.iter().map(|s| s.as_str()));
+    let exclude_patterns: Vec<String> = exclude_patterns.iter().map(|s| s.to_string()).collect();
 
     let include_patterns: Vec<String> = if additional_includes.is_empty() {
         DEFAULT_INCLUDE_PATTERNS
@@ -249,13 +212,12 @@ pub async fn get_files_recursively(
 
     for path in paths {
         if path.is_file() {
-            if should_include_single_file(path, &exclude_matcher, &include_matcher, max_size_bytes)
+            if should_include_file(path, &exclude_matcher, &include_matcher, max_size_bytes)
                 && is_text_file(path).await
             {
                 all_files.push(path.clone());
             }
         } else if path.is_dir() {
-            // Use optimized directory traversal
             for entry in WalkDir::new(path)
                 .into_iter()
                 .filter_entry(|e| {
@@ -270,8 +232,8 @@ pub async fn get_files_recursively(
                 let entry_path = entry.path();
 
                 if entry_path.is_file()
-                    && should_include_file_fast(
-                        &entry,
+                    && should_include_file(
+                        entry_path,
                         &exclude_matcher,
                         &include_matcher,
                         max_size_bytes,

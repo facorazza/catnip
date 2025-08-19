@@ -3,8 +3,9 @@ use clap::{Parser, Subcommand};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
-use std::process::Command;
 use tracing::{debug, error, info, warn};
+
+use catnip::clipboard::{copy_to_clipboard, read_from_clipboard};
 
 mod file_processor;
 mod pattern_matcher;
@@ -60,8 +61,8 @@ enum Commands {
     },
     /// Apply JSON-formatted code updates to files
     Patch {
-        /// JSON file containing updates, or '-' to read from stdin
-        json_file: String,
+        /// JSON file containing updates, '-' to read from stdin, or omit to read from clipboard
+        json_file: Option<String>,
 
         /// Dry run - show what would be changed without applying updates
         #[arg(long)]
@@ -193,16 +194,20 @@ async fn execute_cat(
     Ok(())
 }
 
-async fn execute_patch(json_file: String, dry_run: bool, backup: bool) -> Result<()> {
-    // Read JSON from file or stdin
-    let json_content = if json_file == "-" {
-        use std::io::{self, BufRead};
-        let stdin = io::stdin();
-        let lines: Result<Vec<_>, _> = stdin.lock().lines().collect();
-        lines.context("Failed to read from stdin")?.join("\n")
-    } else {
-        fs::read_to_string(&json_file)
-            .with_context(|| format!("Failed to read JSON file: {}", json_file))?
+async fn execute_patch(json_file: Option<String>, dry_run: bool, backup: bool) -> Result<()> {
+    // Read JSON from file, stdin, or clipboard
+    let json_content = match json_file.as_deref() {
+        Some("-") => {
+            use std::io::{self, BufRead};
+            let stdin = io::stdin();
+            let lines: Result<Vec<_>, _> = stdin.lock().lines().collect();
+            lines.context("Failed to read from stdin")?.join("\n")
+        }
+        Some(file_path) => fs::read_to_string(file_path)
+            .with_context(|| format!("Failed to read JSON file: {}", file_path))?,
+        None => read_from_clipboard()
+            .await
+            .context("Failed to read from clipboard")?,
     };
 
     let update_request: UpdateRequest =
@@ -332,93 +337,4 @@ async fn process_file_update(
         .with_context(|| format!("Failed to write updated file: {}", file_path.display()))?;
 
     Ok(applied_updates)
-}
-
-// Clipboard functionality
-#[derive(Debug)]
-enum ClipboardType {
-    Wayland,
-    X11,
-    MacOS,
-    Windows,
-    Unsupported,
-}
-
-fn detect_clipboard_system() -> ClipboardType {
-    if cfg!(target_os = "windows") {
-        return ClipboardType::Windows;
-    }
-
-    if cfg!(target_os = "macos") {
-        return ClipboardType::MacOS;
-    }
-
-    // For Linux/Unix systems
-    if std::env::var("WAYLAND_DISPLAY").is_ok() && command_exists("wl-copy") {
-        return ClipboardType::Wayland;
-    }
-
-    if std::env::var("DISPLAY").is_ok() && command_exists("xclip") {
-        return ClipboardType::X11;
-    }
-
-    ClipboardType::Unsupported
-}
-
-fn command_exists(cmd: &str) -> bool {
-    Command::new("which")
-        .arg(cmd)
-        .output()
-        .map(|output| output.status.success())
-        .unwrap_or(false)
-}
-
-async fn copy_to_clipboard_native(content: &str) -> Result<()> {
-    let clipboard_type = detect_clipboard_system();
-    debug!("Detected clipboard system: {:?}", clipboard_type);
-
-    let (cmd, args): (&str, Vec<&str>) = match clipboard_type {
-        ClipboardType::Wayland => ("wl-copy", vec![]),
-        ClipboardType::X11 => ("xclip", vec!["-selection", "clipboard"]),
-        ClipboardType::MacOS => ("pbcopy", vec![]),
-        ClipboardType::Windows => ("clip", vec![]),
-        ClipboardType::Unsupported => {
-            return Err(anyhow::anyhow!(
-                "No supported clipboard system found. Install:\n\
-                - Wayland: wl-clipboard\n\
-                - X11: xclip\n\
-                - Or use --output to save to file"
-            ));
-        }
-    };
-
-    let mut child = Command::new(cmd)
-        .args(&args)
-        .stdin(std::process::Stdio::piped())
-        .spawn()
-        .map_err(|e| anyhow::anyhow!("Failed to spawn {}: {}", cmd, e))?;
-
-    if let Some(stdin) = child.stdin.as_mut() {
-        use std::io::Write;
-        stdin
-            .write_all(content.as_bytes())
-            .map_err(|e| anyhow::anyhow!("Failed to write to {} stdin: {}", cmd, e))?;
-    }
-
-    let status = child
-        .wait()
-        .map_err(|e| anyhow::anyhow!("Failed to wait for {}: {}", cmd, e))?;
-
-    if !status.success() {
-        return Err(anyhow::anyhow!("{} failed with status: {}", cmd, status));
-    }
-
-    info!("Content copied to clipboard using {}", cmd);
-    println!("Content copied to clipboard");
-    Ok(())
-}
-
-pub async fn copy_to_clipboard(content: &str) -> Result<()> {
-    debug!("Copying {} characters to clipboard", content.len());
-    copy_to_clipboard_native(content).await
 }

@@ -1,3 +1,4 @@
+pub mod clipboard;
 pub mod file_processor;
 pub mod pattern_matcher;
 pub mod patterns;

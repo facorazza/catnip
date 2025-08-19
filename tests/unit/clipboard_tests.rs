@@ -1,4 +1,3 @@
-use std::env;
 use std::process::Command;
 
 // We can't easily test the actual clipboard functionality without mocking,
@@ -47,31 +46,6 @@ fn test_platform_detection() {
     {
         assert!(cfg!(target_os = "linux"));
     }
-}
-
-#[tokio::test]
-async fn test_empty_content_validation() {
-    // Test validation of empty content
-    let empty_content = "";
-    let whitespace_content = "   \n\t   ";
-
-    assert!(empty_content.is_empty());
-    assert!(whitespace_content.trim().is_empty());
-    assert!(!"hello".trim().is_empty());
-}
-
-// Mock test for clipboard operations - these would need actual mocking in a real test suite
-#[tokio::test]
-async fn test_clipboard_error_handling() {
-    // This is more of a documentation of expected behavior
-    // In a real implementation, we'd use mocks to test error conditions
-
-    // Test that attempting to read from clipboard handles errors gracefully
-    // (This test would require actual mocking in production)
-    assert!(
-        true,
-        "Clipboard error handling should be implemented with proper mocking"
-    );
 }
 
 #[test]

@@ -60,8 +60,8 @@ enum Commands {
     },
     /// Apply JSON-formatted code updates to files
     Patch {
-        /// JSON file containing updates, or '-' to read from stdin
-        json_file: String,
+        /// JSON file containing updates, '-' to read from stdin, or omit to read from clipboard
+        json_file: Option<String>,
 
         /// Dry run - show what would be changed without applying updates
         #[arg(long)]
@@ -193,16 +193,20 @@ async fn execute_cat(
     Ok(())
 }
 
-async fn execute_patch(json_file: String, dry_run: bool, backup: bool) -> Result<()> {
-    // Read JSON from file or stdin
-    let json_content = if json_file == "-" {
-        use std::io::{self, BufRead};
-        let stdin = io::stdin();
-        let lines: Result<Vec<_>, _> = stdin.lock().lines().collect();
-        lines.context("Failed to read from stdin")?.join("\n")
-    } else {
-        fs::read_to_string(&json_file)
-            .with_context(|| format!("Failed to read JSON file: {}", json_file))?
+async fn execute_patch(json_file: Option<String>, dry_run: bool, backup: bool) -> Result<()> {
+    // Read JSON from file, stdin, or clipboard
+    let json_content = match json_file.as_deref() {
+        Some("-") => {
+            use std::io::{self, BufRead};
+            let stdin = io::stdin();
+            let lines: Result<Vec<_>, _> = stdin.lock().lines().collect();
+            lines.context("Failed to read from stdin")?.join("\n")
+        }
+        Some(file_path) => fs::read_to_string(file_path)
+            .with_context(|| format!("Failed to read JSON file: {}", file_path))?,
+        None => read_from_clipboard()
+            .await
+            .context("Failed to read from clipboard")?,
     };
 
     let update_request: UpdateRequest =
@@ -421,4 +425,47 @@ async fn copy_to_clipboard_native(content: &str) -> Result<()> {
 pub async fn copy_to_clipboard(content: &str) -> Result<()> {
     debug!("Copying {} characters to clipboard", content.len());
     copy_to_clipboard_native(content).await
+}
+
+async fn read_from_clipboard() -> Result<String> {
+    let clipboard_type = detect_clipboard_system();
+    debug!("Reading from clipboard using: {:?}", clipboard_type);
+
+    let (cmd, args): (&str, Vec<&str>) = match clipboard_type {
+        ClipboardType::Wayland => ("wl-paste", vec![]),
+        ClipboardType::X11 => ("xclip", vec!["-selection", "clipboard", "-o"]),
+        ClipboardType::MacOS => ("pbpaste", vec![]),
+        ClipboardType::Windows => ("powershell", vec!["-command", "Get-Clipboard"]),
+        ClipboardType::Unsupported => {
+            return Err(anyhow::anyhow!(
+                "No supported clipboard system found. Install:\n\
+                - Wayland: wl-clipboard\n\
+                - X11: xclip\n\
+                - Or provide a JSON file path"
+            ));
+        }
+    };
+
+    let output = Command::new(cmd)
+        .args(&args)
+        .output()
+        .map_err(|e| anyhow::anyhow!("Failed to run {}: {}", cmd, e))?;
+
+    if !output.status.success() {
+        return Err(anyhow::anyhow!(
+            "{} failed with status: {}",
+            cmd,
+            output.status
+        ));
+    }
+
+    let content = String::from_utf8(output.stdout)
+        .map_err(|e| anyhow::anyhow!("Invalid UTF-8 in clipboard content: {}", e))?;
+
+    if content.trim().is_empty() {
+        return Err(anyhow::anyhow!("Clipboard is empty"));
+    }
+
+    info!("Read {} characters from clipboard", content.len());
+    Ok(content)
 }

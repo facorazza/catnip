@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
     - name: Install Rust
       uses: dtolnay/rust-toolchain@stable
       with:
@@ -44,7 +44,7 @@ jobs:
         os: [ubuntu-24.04, macos-15, windows-2025]
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
     - name: Install Rust
       uses: dtolnay/rust-toolchain@stable
     - name: Cache dependencies
@@ -108,7 +108,7 @@ jobs:
           asset_name: catnip-windows-x86_64.exe
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
     - name: Install Rust
       uses: dtolnay/rust-toolchain@stable
       with:

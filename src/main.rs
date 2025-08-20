@@ -2,8 +2,8 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
-use catnip::commands::cat::execute_cat;
-use catnip::commands::patch::execute_patch;
+use catnip::commands::cat::cat;
+use catnip::commands::patch::patch;
 
 #[derive(Parser)]
 #[command(name = "catnip")]
@@ -89,7 +89,7 @@ async fn main() -> Result<()> {
             prompt,
             max_size_mb,
         } => {
-            execute_cat(
+            cat(
                 paths,
                 output,
                 no_copy,
@@ -107,7 +107,7 @@ async fn main() -> Result<()> {
             dry_run,
             backup,
         } => {
-            execute_patch(json_file, dry_run, backup).await?;
+            patch(json_file, dry_run, backup).await?;
         }
     }
 

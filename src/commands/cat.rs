@@ -7,7 +7,7 @@ use crate::file_processor;
 use crate::prompt;
 
 #[allow(clippy::too_many_arguments)]
-pub async fn execute_cat(
+pub async fn cat(
     paths: Vec<PathBuf>,
     output: Option<String>,
     no_copy: bool,

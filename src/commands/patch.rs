@@ -26,7 +26,7 @@ pub struct CodeUpdate {
     pub description: Option<String>,
 }
 
-pub async fn execute_patch(json_file: Option<String>, dry_run: bool, backup: bool) -> Result<()> {
+pub async fn patch(json_file: Option<String>, dry_run: bool, backup: bool) -> Result<()> {
     // Read JSON from file, stdin, or clipboard
     let json_content = match json_file.as_deref() {
         Some("-") => {

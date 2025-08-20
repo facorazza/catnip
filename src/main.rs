@@ -21,7 +21,7 @@ enum Commands {
         paths: Vec<PathBuf>,
 
         /// Output file name (optional)
-        #[arg(short, long)]
+        #[arg(short = 'o', long)]
         output: Option<String>,
 
         /// Don't copy to clipboard
@@ -29,11 +29,11 @@ enum Commands {
         no_copy: bool,
 
         /// Additional patterns to exclude
-        #[arg(long)]
+        #[arg(short = 'e', long)]
         exclude: Vec<String>,
 
         /// Additional patterns to include
-        #[arg(long)]
+        #[arg(short = 'i', long)]
         include: Vec<String>,
 
         /// Ignore code comments
@@ -61,7 +61,7 @@ enum Commands {
         dry_run: bool,
 
         /// Create backup files before updating
-        #[arg(long)]
+        #[arg(short = 'b', long)]
         backup: bool,
     },
 }

@@ -2,10 +2,6 @@
 
 [![Lint, test and build](https://github.com/facorazza/catnip/actions/workflows/build.yml/badge.svg)](https://github.com/facorazza/catnip/actions/workflows/build.yml)
 
-**Rapid Project File Concatenation and Code Patching for LLM Analysis**
-
-## Overview
-
 `catnip` is a high-performance Rust CLI tool designed to simplify project understanding and code modification workflows. It concatenates multiple files into a single, well-formatted markdown document and provides automated code patching capabilities using regex-based updates.
 
 ## Key Features
@@ -126,7 +122,8 @@ catnip patch updates.json --backup
       ]
     }
   ]
-}```
+}
+```
 
 ## Default Exclusion Patterns
 

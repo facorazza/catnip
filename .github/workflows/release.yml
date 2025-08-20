@@ -1,13 +1,10 @@
 name: Rust Release
-
 on:
   release:
     types:
     - created
-
 env:
   CARGO_TERM_COLOR: always
-
 jobs:
   build-binaries:
     runs-on: ${{ matrix.os }}
@@ -16,23 +13,23 @@ jobs:
         include:
         - os: ubuntu-24.04
           target: x86_64-unknown-linux-gnu
-          artifact_name: catnip-linux-x86_64
+          artifact_name: catnip
           asset_name: catnip-linux-x86_64
         - os: ubuntu-24.04-arm
           target: aarch64-unknown-linux-gnu
-          artifact_name: catnip-linux-aarch64
+          artifact_name: catnip
           asset_name: catnip-linux-aarch64
         - os: macos-15
           target: x86_64-apple-darwin
-          artifact_name: catnip-macos-x86_64
+          artifact_name: catnip
           asset_name: catnip-macos-x86_64
         - os: macos-15
           target: aarch64-apple-darwin
-          artifact_name: catnip-macos-aarch64
+          artifact_name: catnip
           asset_name: catnip-macos-aarch64
         - os: windows-2025
           target: x86_64-pc-windows-msvc
-          artifact_name: catnip-windows-x86_64.exe
+          artifact_name: catnip.exe
           asset_name: catnip-windows-x86_64.exe
     steps:
     - name: Checkout code
@@ -43,13 +40,17 @@ jobs:
         targets: ${{ matrix.target }}
     - name: Build release
       run: cargo build --release --target ${{ matrix.target }}
+    - name: Copy and rename binary
+      run: |
+        mkdir -p ./upload
+        cp ./target/${{ matrix.target }}/release/${{ matrix.artifact_name }} ./upload/${{ matrix.asset_name }}
+      shell: bash
     - name: Upload release asset
       uses: softprops/action-gh-release@v2
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
-        files: ./target/${{ matrix.target }}/release/${{ matrix.artifact_name }}
-
+        files: ./upload/${{ matrix.asset_name }}
   publish-crate:
     runs-on: ubuntu-latest
     steps:

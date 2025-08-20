@@ -27,17 +27,9 @@
 - 🔧 **Automated Code Patching**
 
   - JSON-based patch specification system
-  - Regex pattern matching for precise code updates
+  - Exact string matching for precise code updates
   - Multi-file batch operations
   - Safe replacement with backup options
-
-- ⚡ **Performance Optimized**
-
-  - Async file processing
-  - Optimized pattern matching with fast lookups
-  - Structured logging with tracing
-  - Memory-efficient directory traversal
-
 
 ## Installation
 
@@ -47,7 +39,10 @@
 git clone <repository-url>
 cd catnip
 cargo build --release
+cargo install --path .
 ```
+
+Make sure the binary is in your PATH.
 
 ## Usage
 
@@ -59,6 +54,9 @@ catnip cat src/main.rs src/lib.rs
 
 # Process entire directory
 catnip cat src
+
+# Append prompt for JSON updates to be used with catnip patch
+catnip cat --prompt src
 
 # Save to file
 catnip cat src -o project_summary.md
@@ -79,6 +77,9 @@ catnip cat . --max-size-mb 5
 ### Code Patching (`patch` command)
 
 ```bash
+# Apply patches from JSON content in the clipboard
+catnip patch
+
 # Apply patches from JSON file
 catnip patch updates.json
 
@@ -95,17 +96,18 @@ catnip patch updates.json --backup
 
 - `<PATHS>...`: One or more files or directories to process
 - `-o, --output <FILE>`: Optional output filename
-- `--exclude <PATTERN>`: Additional patterns to exclude
-- `--include <PATTERN>`: Additional patterns to include
+- `-e, --exclude <PATTERN>`: Additional patterns to exclude
+- `-i, --include <PATTERN>`: Additional patterns to include
 - `--ignore-comments`: Strip code comments from output
 - `--ignore-docstrings`: Remove docstrings from output
 - `--max-size-mb <SIZE>`: Maximum file size in MB (default: 10)
+- `-p, --prompt`: Include prompt instructions for LLM analysis
 
 ### `patch` subcommand
 
 - `<JSON_FILE>`: JSON file containing patch specifications
 - `--dry-run`: Preview changes without applying them
-- `--backup`: Create backup files before modifications
+- `-b, --backup`: Create backup files before modifications
 
 ## Patch JSON Format
 
@@ -117,19 +119,14 @@ catnip patch updates.json --backup
       "path": "src/main.rs",
       "updates": [
         {
-          "pattern": "fn old_function\\(.*?\\) \\{[^}]+\\}",
-          "replacement": "fn new_function(param: &str) {\n    println!(\"Updated: {}\", param);\n}",
-          "case_insensitive": false,
-          "multiline": true,
-          "dot_matches_newline": true,
-          "max_replacements": null,
+          "old_content": "fn old_function() {\n    println!(\"old implementation\");\n}",
+          "new_content": "fn new_function(param: &str) {\n    println!(\"Updated: {}\", param);\n}",
           "description": "Replace old_function with improved version"
         }
       ]
     }
   ]
-}
-```
+}```
 
 ## Default Exclusion Patterns
 
@@ -198,19 +195,3 @@ The `cat` command generates a structured markdown document with:
 ## Environment Variables
 
 - `RUST_LOG`: Set logging level (`error`, `warn`, `info`, `debug`, `trace`)
-
-## Performance Features
-
-- **Fast pattern matching**: Separate exact matches from glob patterns
-- **Optimized directory traversal**: Skip common build/cache directories early
-- **Async I/O**: Non-blocking file operations
-- **Memory efficient**: Stream processing for large codebases
-- **Binary detection**: Quick null-byte scanning to skip binary files
-
-## Troubleshooting
-
-- **Large output**: Use `--max-size-mb` to limit file sizes or `--exclude` for specific patterns
-- **Permission errors**: Ensure read/write access to target files and directories
-- **Regex patterns**: Test patterns carefully - use online regex testers
-- **Logging**: Set `RUST_LOG=debug` for detailed operation logs
-- **Path issues**: Use forward slashes in patterns, even on Windows

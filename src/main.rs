@@ -1,12 +1,9 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
-use tracing::{error, info};
 
-use catnip::clipboard::copy_to_clipboard;
-use catnip::file_processor;
-use catnip::patch::execute_patch;
-use catnip::prompt;
+use catnip::commands::cat::cat;
+use catnip::commands::patch::patch;
 
 #[derive(Parser)]
 #[command(name = "catnip")]
@@ -24,7 +21,7 @@ enum Commands {
         paths: Vec<PathBuf>,
 
         /// Output file name (optional)
-        #[arg(short, long)]
+        #[arg(short = 'o', long)]
         output: Option<String>,
 
         /// Don't copy to clipboard
@@ -32,11 +29,11 @@ enum Commands {
         no_copy: bool,
 
         /// Additional patterns to exclude
-        #[arg(long)]
+        #[arg(short = 'e', long)]
         exclude: Vec<String>,
 
         /// Additional patterns to include
-        #[arg(long)]
+        #[arg(short = 'i', long)]
         include: Vec<String>,
 
         /// Ignore code comments
@@ -64,7 +61,7 @@ enum Commands {
         dry_run: bool,
 
         /// Create backup files before updating
-        #[arg(long)]
+        #[arg(short = 'b', long)]
         backup: bool,
     },
 }
@@ -92,7 +89,7 @@ async fn main() -> Result<()> {
             prompt,
             max_size_mb,
         } => {
-            execute_cat(
+            cat(
                 paths,
                 output,
                 no_copy,
@@ -110,61 +107,9 @@ async fn main() -> Result<()> {
             dry_run,
             backup,
         } => {
-            execute_patch(json_file, dry_run, backup).await?;
+            patch(json_file, dry_run, backup).await?;
         }
     }
 
-    Ok(())
-}
-
-#[allow(clippy::too_many_arguments)]
-async fn execute_cat(
-    paths: Vec<PathBuf>,
-    output: Option<String>,
-    no_copy: bool,
-    exclude: Vec<String>,
-    include: Vec<String>,
-    ignore_comments: bool,
-    ignore_docstrings: bool,
-    prompt: bool,
-    max_size_mb: u64,
-) -> Result<()> {
-    if paths.is_empty() {
-        error!("No paths provided");
-        std::process::exit(1);
-    }
-
-    let files = file_processor::get_files_recursively(
-        &paths,
-        &exclude,
-        &include,
-        ignore_comments,
-        ignore_docstrings,
-        max_size_mb,
-    )
-    .await?;
-
-    info!("Found {} files to process", files.len());
-
-    let mut result = file_processor::concatenate_files(
-        &files,
-        output.as_deref(),
-        ignore_comments,
-        ignore_docstrings,
-    )
-    .await?;
-
-    // Add prompt instructions if requested
-    if prompt {
-        result = format!("{}\n{}", result, prompt::PROMPT);
-        info!("Added prompt instructions from constant");
-    }
-
-    // Copy to clipboard by default unless --no-copy is specified or output file is provided
-    if !no_copy && output.is_none() {
-        copy_to_clipboard(&result).await?;
-    }
-
-    info!("Processing completed successfully");
     Ok(())
 }

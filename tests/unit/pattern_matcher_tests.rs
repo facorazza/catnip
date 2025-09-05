@@ -1,4 +1,4 @@
-use catnip::pattern_matcher::PatternMatcher;
+use catnip::core::pattern_matcher::PatternMatcher;
 use std::path::PathBuf;
 
 #[test]

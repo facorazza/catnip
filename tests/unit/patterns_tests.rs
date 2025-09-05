@@ -1,4 +1,4 @@
-use catnip::patterns::{DEFAULT_EXCLUDE_PATTERNS, DEFAULT_INCLUDE_PATTERNS};
+use catnip::config::patterns::{DEFAULT_EXCLUDE_PATTERNS, DEFAULT_INCLUDE_PATTERNS};
 use std::collections::HashSet;
 
 #[test]

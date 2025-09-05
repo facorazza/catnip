@@ -67,12 +67,11 @@ impl PatternMatcher {
         glob_patterns: &mut Vec<GlobPattern>,
     ) {
         // Extension patterns (*.rs, *.py, etc.)
-        if let Some(ext) = pattern.strip_prefix("*.") {
-            if !ext.contains('*') && !ext.contains('?') && !ext.contains('/') {
+        if let Some(ext) = pattern.strip_prefix("*.")
+            && !ext.contains('*') && !ext.contains('?') && !ext.contains('/') {
                 exact_extensions.insert(ext.to_string());
                 return;
             }
-        }
 
         // Exact filename patterns (Cargo.toml, main.rs, etc.)
         if !pattern.contains('*') && !pattern.contains('?') && !pattern.contains('/') {
@@ -150,21 +149,19 @@ impl PatternMatcher {
         }
 
         // Exact extension check
-        if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-            if self.exact_extensions.contains(ext) {
+        if let Some(ext) = path.extension().and_then(|e| e.to_str())
+            && self.exact_extensions.contains(ext) {
                 debug!("Extension match: .{}", ext);
                 return true;
             }
-        }
 
         // Exact directory check - check if any path component matches
         for component in path.components() {
-            if let Some(dir_name) = component.as_os_str().to_str() {
-                if self.exact_directories.contains(dir_name) {
+            if let Some(dir_name) = component.as_os_str().to_str()
+                && self.exact_directories.contains(dir_name) {
                     debug!("Directory match: {}", dir_name);
                     return true;
                 }
-            }
         }
 
         // Glob pattern matching (only if no fast matches)

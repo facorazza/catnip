@@ -1,6 +1,7 @@
 use crate::config::patterns::{DEFAULT_EXCLUDE_PATTERNS, DEFAULT_INCLUDE_PATTERNS};
 use crate::core::pattern_matcher::PatternMatcher;
 use anyhow::Result;
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use tokio::fs;
 use tracing::{debug, info, instrument};
@@ -125,5 +126,88 @@ pub async fn collect_files(
     }
 
     info!("Found {} files after filtering", all_files.len());
+
+    if !all_files.is_empty() {
+        println!("\n📁 Files to be included:");
+        print_file_tree(&all_files);
+        println!();
+    }
+
     Ok(all_files)
+}
+
+fn print_file_tree(files: &[PathBuf]) {
+    let current_dir = std::env::current_dir().unwrap_or_default();
+    let mut tree = BTreeMap::new();
+
+    // Build tree structure
+    for file in files {
+        let relative_path = file.strip_prefix(&current_dir).unwrap_or(file);
+        add_file_to_tree(&mut tree, relative_path);
+    }
+
+    // Print tree
+    print_tree_recursive(&tree, "", true);
+}
+
+fn add_file_to_tree(tree: &mut BTreeMap<String, TreeNode>, path: &Path) {
+    let components: Vec<_> = path.components().collect();
+    if components.is_empty() {
+        return;
+    }
+
+    let mut current = tree;
+
+    for (i, component) in components.iter().enumerate() {
+        let name = component.as_os_str().to_string_lossy().to_string();
+        let is_file = i == components.len() - 1;
+
+        if is_file {
+            current.insert(name, TreeNode::File);
+            break;
+        }
+
+        let entry = current
+            .entry(name)
+            .or_insert_with(|| TreeNode::Directory(BTreeMap::new()));
+
+        match entry {
+            TreeNode::Directory(subtree) => {
+                current = subtree;
+            }
+            TreeNode::File => break,
+        }
+    }
+}
+
+#[derive(Debug)]
+enum TreeNode {
+    File,
+    Directory(BTreeMap<String, TreeNode>),
+}
+
+fn print_tree_recursive(tree: &BTreeMap<String, TreeNode>, prefix: &str, is_root: bool) {
+    let items: Vec<_> = tree.iter().collect();
+
+    for (i, (name, node)) in items.iter().enumerate() {
+        let is_last = i == items.len() - 1;
+        let connector = if is_root {
+            if is_last { "└── " } else { "├── " }
+        } else if is_last {
+            "└── "
+        } else {
+            "├── "
+        };
+
+        match node {
+            TreeNode::File => {
+                println!("{}{}📄 {}", prefix, connector, name);
+            }
+            TreeNode::Directory(subtree) => {
+                println!("{}{}📁 {}/", prefix, connector, name);
+                let new_prefix = format!("{}{}", prefix, if is_last { "    " } else { "│   " });
+                print_tree_recursive(subtree, &new_prefix, false);
+            }
+        }
+    }
 }

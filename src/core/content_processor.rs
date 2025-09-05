@@ -13,6 +13,7 @@ pub async fn concatenate_files(
     ignore_comments: bool,
     ignore_docstrings: bool,
 ) -> Result<String> {
+    println!("\n🔨 Processing {} files...", files.len());
     let mut result = String::new();
 
     // Generate directory structure
@@ -49,6 +50,12 @@ pub async fn concatenate_files(
                 result.push_str(&processed_content);
                 result.push_str("\n```\n\n");
 
+                println!(
+                    "  ✓ {} ({} chars, {})",
+                    relative_path.display(),
+                    processed_content.len(),
+                    language
+                );
                 debug!(
                     "Added file: {} ({} chars)",
                     relative_path.display(),
@@ -56,15 +63,18 @@ pub async fn concatenate_files(
                 );
             }
             Err(e) => {
+                println!("  ✗ {} - Error: {}", relative_path.display(), e);
                 warn!("Could not read file {}: {}", file_path.display(), e);
                 result.push_str(&format!("*Error reading file: {}*\n\n", e));
             }
         }
     }
 
+    println!("\n📝 Total content: {} characters", result.len());
+
     if let Some(output_path) = output_file {
         fs::write(output_path, &result).await?;
-        println!("Output written to: {}", output_path);
+        println!("💾 Output written to: {}", output_path);
     }
 
     Ok(result)

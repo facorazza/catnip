@@ -95,7 +95,7 @@ async fn test_collect_files_single_file() {
     let test_file = temp_dir.path().join("test.rs");
     fs::write(&test_file, "fn main() {}").await.unwrap();
 
-    let files = collect_files(&[test_file.clone()], &[], &[], 10)
+    let files = collect_files(std::slice::from_ref(&test_file), &[], &[], 10)
         .await
         .unwrap();
 

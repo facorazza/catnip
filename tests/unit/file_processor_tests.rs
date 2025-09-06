@@ -2,7 +2,9 @@ use std::path::Path;
 use tempfile::TempDir;
 use tokio::fs;
 
-use catnip::file_processor::*;
+use catnip::core::content_processor::*;
+use catnip::core::file_collector::*;
+use catnip::utils::{language_detection::*, text_processing::*};
 
 #[test]
 fn test_get_language_from_extension() {
@@ -84,16 +86,16 @@ return True"#;
 fn test_remove_comments_disabled() {
     let code = "fn test() {\n    println!(\"test\");\n}";
     let result = remove_comments_and_docstrings(code, "rust", false, false);
-    assert_eq!(result, code); // Should be unchanged
+    assert_eq!(result, code);
 }
 
 #[tokio::test]
-async fn test_get_files_recursively_single_file() {
+async fn test_collect_files_single_file() {
     let temp_dir = TempDir::new().unwrap();
     let test_file = temp_dir.path().join("test.rs");
     fs::write(&test_file, "fn main() {}").await.unwrap();
 
-    let files = get_files_recursively(&[test_file.clone()], &[], &[], false, false, 10)
+    let files = collect_files(std::slice::from_ref(&test_file), &[], &[], 10)
         .await
         .unwrap();
 
@@ -102,7 +104,7 @@ async fn test_get_files_recursively_single_file() {
 }
 
 #[tokio::test]
-async fn test_get_files_recursively_with_filters() {
+async fn test_collect_files_with_filters() {
     let temp_dir = TempDir::new().unwrap();
     let temp_path = temp_dir.path();
 
@@ -115,12 +117,10 @@ async fn test_get_files_recursively_with_filters() {
     fs::write(temp_path.join("data.json"), "{}").await.unwrap();
 
     // Test exclusions
-    let files = get_files_recursively(
+    let files = collect_files(
         &[temp_path.to_path_buf()],
         &["*.log".to_string(), "*.json".to_string()],
         &[],
-        false,
-        false,
         10,
     )
     .await

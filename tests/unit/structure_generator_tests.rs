@@ -1,4 +1,4 @@
-use catnip::structure_generator::generate_directory_structure;
+use catnip::core::structure_generator::generate_directory_structure;
 use std::path::PathBuf;
 
 #[test]

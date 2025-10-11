@@ -4,7 +4,7 @@ version = "0.6.0"
 edition = "2024"
 
 [dependencies]
-anyhow = "1.0.99"
+anyhow = "1.0.100"
 clap = { version = "4.5.48", features = ["derive"] }
 copypasta = "0.10.2"
 regex = "1.11"
@@ -14,7 +14,7 @@ tracing-subscriber = { version = "0.3.20", features = ["env-filter", "fmt"] }
 tokio = { version = "1.47.1", features = ["full"] }
 walkdir = "2.5.0"
 serde = { version = "1.0.219", features = ["derive"] }
-serde_json = "1.0.143"
+serde_json = "1.0.145"
 
 [dev-dependencies]
 tempfile = "3.21.0"

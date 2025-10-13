@@ -7,7 +7,7 @@ edition = "2024"
 anyhow = "1.0.100"
 clap = { version = "4.5.45", features = ["derive"] }
 copypasta = "0.10.2"
-regex = "1.11"
+regex = "1.12"
 rustls = "0.23.31"
 tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.20", features = ["env-filter", "fmt"] }

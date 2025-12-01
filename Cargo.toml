@@ -9,7 +9,7 @@ clap = { version = "4.5.45", features = ["derive"] }
 copypasta = "0.10.2"
 regex = "1.11"
 rustls = "0.23.31"
-tracing = "0.1.41"
+tracing = "0.1.43"
 tracing-subscriber = { version = "0.3.20", features = ["env-filter", "fmt"] }
 tokio = { version = "1.47.1", features = ["full"] }
 walkdir = "2.5.0"

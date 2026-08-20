@@ -1,10 +1,24 @@
 [package]
-name = "catnip"
+name = "catnip-rs"
 version = "0.6.0"
 edition = "2024"
+rust-version = "1.96"
+description = "A high-performance Rust CLI tool that concatenates project files into a single markdown document and applies regex-based code patches"
+license = "Apache-2.0"
+repository = "https://github.com/facorazza/catnip"
+keywords = ["cli", "code", "patch", "markdown", "concatenate"]
+categories = ["command-line-utilities", "development-tools"]
+
+[lib]
+name = "catnip"
+path = "src/lib.rs"
+
+[[bin]]
+name = "catnip"
+path = "src/main.rs"
 
 [dependencies]
-anyhow = "1.0.99"
+anyhow = "1.0.100"
 clap = { version = "4.5.45", features = ["derive"] }
 copypasta = "0.10.2"
 regex = "1.11"
@@ -13,8 +27,8 @@ tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.20", features = ["env-filter", "fmt"] }
 tokio = { version = "1.47.1", features = ["full"] }
 walkdir = "2.5.0"
-serde = { version = "1.0.219", features = ["derive"] }
-serde_json = "1.0.143"
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.145"
 
 [dev-dependencies]
-tempfile = "3.21.0"
+tempfile = "3.23.0"

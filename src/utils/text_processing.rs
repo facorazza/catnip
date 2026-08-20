@@ -36,11 +36,9 @@ pub fn remove_comments_and_docstrings(
                     result = re.replace_all(&result, "").to_string();
                 }
             }
-            "ruby" | "bash" | "sh" | "zsh" | "fish" => {
-                if ignore_comments {
-                    let re = Regex::new(r"#.*$").unwrap();
-                    result = re.replace_all(&result, "").to_string();
-                }
+            "ruby" | "bash" | "sh" | "zsh" | "fish" if ignore_comments => {
+                let re = Regex::new(r"#.*$").unwrap();
+                result = re.replace_all(&result, "").to_string();
             }
             _ => {}
         }

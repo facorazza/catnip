@@ -34,17 +34,23 @@ fn test_platform_detection() {
     // Test that we can detect the current platform
     #[cfg(target_os = "windows")]
     {
-        assert!(cfg!(target_os = "windows"));
+        const {
+            assert!(cfg!(target_os = "windows"));
+        }
     }
 
     #[cfg(target_os = "macos")]
     {
-        assert!(cfg!(target_os = "macos"));
+        const {
+            assert!(cfg!(target_os = "macos"));
+        }
     }
 
     #[cfg(target_os = "linux")]
     {
-        assert!(cfg!(target_os = "linux"));
+        const {
+            assert!(cfg!(target_os = "linux"));
+        }
     }
 }
 

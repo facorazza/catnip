@@ -1,7 +1,21 @@
 [package]
-name = "catnip"
+name = "catnip-rs"
 version = "0.6.0"
 edition = "2024"
+rust-version = "1.96"
+description = "A high-performance Rust CLI tool that concatenates project files into a single markdown document and applies regex-based code patches"
+license = "Apache-2.0"
+repository = "https://github.com/facorazza/catnip"
+keywords = ["cli", "code", "patch", "markdown", "concatenate"]
+categories = ["command-line-utilities", "development-tools"]
+
+[lib]
+name = "catnip"
+path = "src/lib.rs"
+
+[[bin]]
+name = "catnip"
+path = "src/main.rs"
 
 [dependencies]
 anyhow = "1.0.100"

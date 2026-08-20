@@ -197,7 +197,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "catnip"
+name = "catnip-rs"
 version = "0.6.0"
 dependencies = [
  "anyhow",

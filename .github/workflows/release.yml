@@ -33,7 +33,7 @@ jobs:
           asset_name: catnip-windows-x86_64.exe
     steps:
     - name: Checkout code
-      uses: actions/checkout@v5
+      uses: actions/checkout@v7
     - name: Install Rust
       uses: dtolnay/rust-toolchain@stable
       with:
@@ -46,7 +46,7 @@ jobs:
         cp ./target/${{ matrix.target }}/release/${{ matrix.artifact_name }} ./upload/${{ matrix.asset_name }}
       shell: bash
     - name: Upload release asset
-      uses: softprops/action-gh-release@v2
+      uses: softprops/action-gh-release@v3
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
@@ -55,7 +55,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Checkout code
-      uses: actions/checkout@v5
+      uses: actions/checkout@v7
     - name: Install Rust
       uses: dtolnay/rust-toolchain@stable
     - name: Publish to crates.io
